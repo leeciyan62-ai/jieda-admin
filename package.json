@@ -1,0 +1,9 @@
+{
+  "name": "jieda-admin",
+  "private": true,
+  "version": "1.0.0",
+  "description": "皆达欢喜电脑端管理后台，直接访问云开发，不依赖微信开发者工具",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
