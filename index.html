@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>皆达欢喜 · 管理后台</title>
+<style>
+  :root {
+    --bg: #f4efe9;
+    --card: #fff;
+    --ink: #2c2420;
+    --muted: #8a7b72;
+    --line: #eadfd6;
+    --brand: #c97b63;
+    --brand-dark: #a85d48;
+    --ok: #2f8f6b;
+    --warn: #c47b2b;
+    --danger: #c44b4b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 "PingFang SC", "Helvetica Neue", sans-serif; color: var(--ink); background: var(--bg); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .login {
+    min-height: 100vh; display: grid; place-items: center;
+    background: radial-gradient(circle at top, #f8e6df, var(--bg) 55%);
+  }
+  .login-card { width: 380px; background: var(--card); border-radius: 16px; padding: 32px; box-shadow: 0 16px 40px rgba(80, 40, 20, .08); }
+  .login-card h1 { margin: 0 0 6px; font-size: 22px; }
+  .login-card p { margin: 0 0 22px; color: var(--muted); }
+  label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 12px; }
+  input, select, textarea {
+    width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: #fff;
+  }
+  textarea { min-height: 72px; resize: vertical; }
+  .btn {
+    border: 0; border-radius: 8px; padding: 8px 14px; background: var(--brand); color: #fff;
+  }
+  .btn:hover { background: var(--brand-dark); }
+  .btn.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .btn.danger { background: var(--danger); }
+  .btn.small { padding: 4px 8px; font-size: 12px; }
+  .login-card .btn { width: 100%; margin-top: 18px; padding: 11px; }
+  .err { color: var(--danger); min-height: 20px; margin-top: 10px; }
+  .app { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; }
+  aside { background: #2c2420; color: #f6efe9; padding: 22px 14px; }
+  aside h1 { font-size: 16px; margin: 0 16px 22px; }
+  nav button {
+    display: block; width: 100%; text-align: left; background: transparent; color: #f6efe9;
+    border: 0; border-radius: 8px; padding: 10px 12px; margin-bottom: 4px;
+  }
+  nav button.active { background: var(--brand); }
+  .main { padding: 22px 28px 48px; }
+  header.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  header.topbar h2 { margin: 0; font-size: 20px; line-height: 1.3; }
+  .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .tools input, .tools select { width: auto; }
+  .card { background: var(--card); border-radius: 12px; padding: 16px; border: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .thumb { width: 42px; height: 42px; object-fit: cover; border-radius: 6px; background: #f3ebe4; }
+  .preview { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background: #f3ebe4; display: block; margin: 6px 0; }
+  .shots { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+  .shot { width: 96px; }
+  .shot img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background: #f3ebe4; display: block; }
+  .shot-ops { display: flex; gap: 2px; margin-top: 4px; }
+  .shot-ops .btn { padding: 2px 6px; }
+  .hint { color: var(--muted); font-size: 12px; }
+  input[type=file] { padding: 6px 0; border: 0; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 99px; background: #f6eee8; font-size: 12px; }
+  .tag.on { background: #e5f6ee; color: var(--ok); }
+  .tag.off { background: #fdecec; color: var(--danger); }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+  .metric { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .metric b { display: block; font-size: 26px; }
+  .metric span { color: var(--muted); font-size: 12px; }
+  .bars { display: grid; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: 92px 1fr 40px; gap: 8px; align-items: center; }
+  .meter { height: 8px; background: #f3e7e1; border-radius: 99px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--brand); }
+  .modal {
+    position: fixed; inset: 0; background: rgba(40, 24, 16, .35); display: grid; place-items: center;
+  }
+  .modal .card { width: min(560px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .hidden { display: none !important; }
+  .toast {
+    position: fixed; right: 18px; bottom: 18px; background: #2c2420; color: #fff;
+    padding: 10px 14px; border-radius: 8px;
+  }
+  .pager { margin-top: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<section class="login" id="loginView">
+  <form class="login-card" id="loginForm">
+    <h1>皆达欢喜</h1>
+    <p>电脑端管理后台。打开网页就能管商品和订单，不需要开着微信开发者工具。</p>
+    <label>账号</label>
+    <input name="username" value="admin" autocomplete="username" required>
+    <label>密码</label>
+    <input name="password" type="password" autocomplete="current-password" required>
+    <button class="btn" type="submit">登录</button>
+    <div class="err" id="loginErr"></div>
+  </form>
+</section>
+
+<section class="app hidden" id="appView">
+  <aside>
+    <h1>皆达欢喜</h1>
+    <nav id="nav"></nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <h2 id="title">概览</h2>
+      <button class="btn ghost" id="logoutBtn">退出</button>
+    </header>
+    <div id="view"></div>
+  </div>
+</section>
+<div id="toast" class="toast hidden"></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script>
+const TABS = [
+  ['overview', '概览'],
+  ['users', '用户'],
+  ['products', '商品'],
+  ['orders', '订单'],
+  ['banners', '轮播'],
+  ['reviews', '评价'],
+  ['activities', '活动']
+]
+const ORDER_STATUS = {
+  pending: '待付款', paid: '待发货', shipped: '已发货',
+  delivered: '已收货', cancelled: '已取消', refunded: '已退款'
+}
+let tab = 'overview'
+let categories = []
+
+function toast(msg) {
+  const el = document.getElementById('toast')
+  el.textContent = msg
+  el.classList.remove('hidden')
+  clearTimeout(toast._t)
+  toast._t = setTimeout(() => el.classList.add('hidden'), 2200)
+}
+
+const CLOUD = 'https://cloud1-d4gxq6a5q387b50ea.service.tcloudbase.com'
+const SESSION_KEY = 'jieda_admin_session'
+
+function readSession() {
+  try {
+    const data = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
+    if (!data || !data.uid || !data.token) return null
+    return data
+  } catch (error) {
+    return null
+  }
+}
+
+async function callCloud(name, data) {
+  let response
+  try {
+    response = await fetch(`${CLOUD}/${name}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data || {})
+    })
+  } catch (error) {
+    throw new Error('连不上云开发')
+  }
+  let body = await response.json().catch(() => ({}))
+  if (body && typeof body.body === 'string' && body.statusCode) {
+    try { body = JSON.parse(body.body) } catch (error) {}
+  }
+  if (body && (body.code === 'INVALID_PATH' || body.code === 'INVALID_ENV')) {
+    throw new Error('云端网页入口还没开通')
+  }
+  return body || {}
+}
+
+async function api(name, data) {
+  const current = readSession()
+  if (!current) { showLogin(); throw new Error('请先登录') }
+  const body = await callCloud(name, { ...(data || {}), _uid: current.uid, _token: current.token })
+  if (!body.success) {
+    if (body.message === '无权限') { localStorage.removeItem(SESSION_KEY); showLogin() }
+    throw new Error(body.message || '请求失败')
+  }
+  return body.data
+}
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, s => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s]))
+}
+function dateText(v) {
+  if (!v) return ''
+  const raw = v.$date || v
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+function money(n) { return '¥' + Number(n || 0).toFixed(2) }
+
+function fileToJpeg(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const edge = Math.max(img.width, img.height)
+      const scale = Math.min(1, 1280 / edge)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(img.width * scale))
+      canvas.height = Math.max(1, Math.round(img.height * scale))
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      canvas.toBlob(async (blob) => {
+        if (!blob) return reject(new Error('图片处理失败'))
+        const bytes = new Uint8Array(await blob.arrayBuffer())
+        let binary = ''
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        }
+        resolve(btoa(binary))
+      }, 'image/jpeg', 0.82)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('无法读取这张图片'))
+    }
+    img.src = url
+  })
+}
+
+async function uploadLocalImage(file, folder) {
+  if (!file) throw new Error('请选择图片')
+  if (!file.type.startsWith('image/')) throw new Error('请选择图片文件')
+  const content = await fileToJpeg(file)
+  const res = await api('admin', { action: 'uploadImage', content, folder, ext: 'jpg' })
+  if (!res || !res.fileID) throw new Error('上传失败')
+  return res
+}
+
+async function cloudUrls(ids) {
+  const fileIDs = [...new Set(ids.filter(id => typeof id === 'string' && id.startsWith('cloud://')))]
+  if (!fileIDs.length) return {}
+  const res = await api('admin', { action: 'getTempUrls', fileIDs })
+  return (res && res.urls) || {}
+}
+
+function showSrc(value, urls) {
+  if (!value) return ''
+  return urls[value] || (value.startsWith('cloud://') ? '' : value)
+}
+
+function showLogin() {
+  document.getElementById('loginView').classList.remove('hidden')
+  document.getElementById('appView').classList.add('hidden')
+}
+function showApp() {
+  document.getElementById('loginView').classList.add('hidden')
+  document.getElementById('appView').classList.remove('hidden')
+  document.getElementById('nav').innerHTML = TABS.map(([id, name]) =>
+    `<button data-tab="${id}" class="${id === tab ? 'active' : ''}">${name}</button>`
+  ).join('')
+  document.getElementById('title').textContent = TABS.find(t => t[0] === tab)[1]
+  render()
+}
+
+document.getElementById('nav').onclick = (e) => {
+  const id = e.target.dataset.tab
+  if (!id) return
+  tab = id
+  showApp()
+}
+document.getElementById('logoutBtn').onclick = async () => {
+  const current = readSession()
+  if (current) {
+    await callCloud('auth', { action: 'logout', _uid: current.uid, _token: current.token }).catch(() => {})
+  }
+  localStorage.removeItem(SESSION_KEY)
+  showLogin()
+}
+document.getElementById('loginForm').onsubmit = async (e) => {
+  e.preventDefault()
+  const err = document.getElementById('loginErr')
+  err.textContent = '正在登录，请稍等…'
+  const fd = new FormData(e.target)
+  try {
+    const body = await callCloud('auth', {
+      action: 'adminLogin',
+      username: fd.get('username'),
+      password: fd.get('password')
+    })
+    const user = body.data && body.data.user
+    if (!body.success || !user || !user.sessionToken) throw new Error(body.message || '登录失败')
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ uid: user._id, token: user.sessionToken }))
+    err.textContent = ''
+    showApp()
+  } catch (ex) {
+    err.textContent = ex.message
+  }
+}
+
+async function render() {
+  const view = document.getElementById('view')
+  view.innerHTML = '<div class="card">加载中…</div>'
+  try {
+    if (tab === 'overview') await renderOverview(view)
+    if (tab === 'users') await renderUsers(view)
+    if (tab === 'products') await renderProducts(view)
+    if (tab === 'orders') await renderOrders(view)
+    if (tab === 'banners') await renderBanners(view)
+    if (tab === 'reviews') await renderReviews(view)
+    if (tab === 'activities') await renderActivities(view)
+  } catch (ex) {
+    view.innerHTML = `<div class="card">${esc(ex.message)}</div>`
+  }
+}
+
+function bars(rows) {
+  const max = Math.max(1, ...rows.map(r => r.value))
+  return `<div class="bars">${rows.map(r => `
+    <div class="bar-row"><span>${esc(r.label)}</span><div class="meter"><i style="width:${r.value / max * 100}%"></i></div><b>${r.value}</b></div>
+  `).join('') || '<div>暂无数据</div>'}</div>`
+}
+
+async function renderOverview(view) {
+  const [users, cats, orders, favs] = await Promise.all([
+    api('admin-stats', { action: 'getUserTrend', days: 7 }),
+    api('admin-stats', { action: 'getCategoryStats' }),
+    api('admin-stats', { action: 'getOrderTrend', days: 7 }),
+    api('admin-stats', { action: 'getFavoriteStats', days: 7 })
+  ])
+  const summary = orders.summary || {}
+  view.innerHTML = `
+    <div class="metrics">
+      <div class="metric"><b>${users.totalUsers || 0}</b><span>累计用户</span></div>
+      <div class="metric"><b>${summary.totalCreated || 0}</b><span>累计订单</span></div>
+      <div class="metric"><b>${summary.totalCompleted || 0}</b><span>已完成</span></div>
+      <div class="metric"><b>${favs.totalFavorites || 0}</b><span>收藏</span></div>
+    </div>
+    <div class="metrics">
+      <div class="card"><h3>近 7 天新用户</h3>${bars((users.daily || []).map(d => ({ label: d.date.slice(5), value: d.newUsers })))}</div>
+      <div class="card"><h3>分类商品数</h3>${bars((cats.list || []).map(d => ({ label: d.name, value: d.count })))}</div>
+      <div class="card"><h3>近 7 天订单</h3>${bars((orders.daily || []).map(d => ({ label: d.date.slice(5), value: d.created })))}</div>
+      <div class="card"><h3>收藏最多</h3>${bars((favs.topFavorited || []).slice(0, 6).map(d => ({ label: d.name, value: d.count })))}</div>
+    </div>`
+}
+
+async function renderUsers(view) {
+  const keyword = view.dataset.keyword || ''
+  const res = await api('admin', { action: 'getUsers', page: 1, pageSize: 50, keyword })
+  view.innerHTML = `
+    <div class="tools"><input id="userKw" placeholder="搜索手机号或昵称" value="${esc(keyword)}"><button class="btn" id="userSearch">搜索</button></div>
+    <div class="card"><table>
+      <tr><th>昵称</th><th>手机号</th><th>状态</th><th>注册时间</th><th></th></tr>
+      ${(res.list || []).map(u => `<tr>
+        <td>${esc(u.nickName)}</td><td>${esc(u.phone)}</td>
+        <td><span class="tag ${u.banned ? 'off' : 'on'}">${u.banned ? '已禁用' : '正常'}</span></td>
+        <td>${dateText(u.createTime)}</td>
+        <td class="actions">
+          <button class="btn ghost small" data-ban="${u._id}">${u.banned ? '启用' : '禁用'}</button>
+          <button class="btn danger small" data-del="${u._id}">删除</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="5">暂无用户</td></tr>'}
+    </table><div class="pager">共 ${res.total || 0} 人</div></div>`
+  document.getElementById('userSearch').onclick = () => { view.dataset.keyword = document.getElementById('userKw').value; renderUsers(view) }
+  view.onclick = async (e) => {
+    const ban = e.target.dataset.ban
+    const del = e.target.dataset.del
+    try {
+      if (ban) { await api('admin', { action: 'toggleBan', userId: ban }); toast('已更新'); renderUsers(view) }
+      if (del && confirm('确定删除这个用户？')) { await api('admin', { action: 'deleteUser', userId: del }); toast('已删除'); renderUsers(view) }
+    } catch (ex) { toast(ex.message) }
+  }
+}
+
+async function loadCategories() {
+  if (categories.length) return categories
+  const res = await api('admin', { action: 'getCategories' })
+  categories = res.list || []
+  return categories
+}
+
+function productForm(p = {}) {
+  const opts = categories.map(c => `<option value="${c._id}" ${c._id === p.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')
+  return `<div class="modal" id="modal"><form class="card" id="productForm">
+    <h3>${p._id ? '编辑商品' : '新增商品'}</h3>
+    <label>名称</label><input name="name" value="${esc(p.name)}" required>
+    <div class="row2">
+      <div><label>价格</label><input name="price" type="number" step="0.01" value="${p.price || ''}" required></div>
+      <div><label>原价</label><input name="originalPrice" type="number" step="0.01" value="${p.originalPrice || ''}"></div>
+    </div>
+    <div class="row2">
+      <div><label>库存</label><input name="stock" type="number" value="${p.stock || 0}"></div>
+      <div><label>分类</label><select name="categoryId">${opts}</select></div>
+    </div>
+    <label>商品图片</label>
+    <div class="shots" id="shotList"></div>
+    <input id="imageFiles" type="file" accept="image/*" multiple>
+    <div class="hint">最多 9 张，可左右调整顺序。小程序商品页按这个顺序轮播。</div>
+    <label>描述</label><textarea name="description">${esc(p.description || '')}</textarea>
+    <label><input type="checkbox" name="isHot" ${p.isHot ? 'checked' : ''} style="width:auto"> 热销</label>
+    <label><input type="checkbox" name="isNew" ${p.isNew ? 'checked' : ''} style="width:auto"> 新品</label>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn" type="submit">保存</button>
+      <button class="btn ghost" type="button" id="cancelModal">取消</button>
+    </div>
+  </form></div>`
+}
+
+function sheetCell(row, names) {
+  const keys = Object.keys(row)
+  for (const name of names) {
+    const key = keys.find(item => String(item).trim().toLowerCase() === name.toLowerCase())
+    if (key != null && row[key] !== '') return row[key]
+  }
+  return ''
+}
+
+function splitImageCell(value) {
+  return String(value || '').split(/[,，;；|\n]/).map(item => item.trim()).filter(Boolean).slice(0, 9)
+}
+
+function flagCell(value) {
+  return ['是', '1', 'true', 'yes', 'y', '热销', '新品'].includes(String(value || '').trim().toLowerCase())
+}
+
+function parseProductSheet(buffer) {
+  if (!window.XLSX) throw new Error('Excel 组件还没加载完成')
+  const book = XLSX.read(buffer, { type: 'array' })
+  const sheet = book.Sheets[book.SheetNames[0]]
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+  return rows.map((row, index) => {
+    const images = splitImageCell(sheetCell(row, ['图片', '图片链接', 'images']))
+    return {
+      row: index + 2,
+      name: String(sheetCell(row, ['名称', '商品名称', 'name'])).trim(),
+      category: String(sheetCell(row, ['分类', 'category'])).trim(),
+      price: sheetCell(row, ['价格', 'price']),
+      originalPrice: sheetCell(row, ['原价', 'originalPrice']),
+      stock: sheetCell(row, ['库存', 'stock']),
+      description: String(sheetCell(row, ['描述', 'description']) || ''),
+      images,
+      badImages: images.filter(item => !/^https?:\/\//i.test(item)),
+      isHot: flagCell(sheetCell(row, ['热销', 'isHot'])),
+      isNew: flagCell(sheetCell(row, ['新品', 'isNew'])),
+      status: ['下架', 'off', '0'].includes(String(sheetCell(row, ['状态', 'status'])).trim().toLowerCase()) ? 'off' : 'on'
+    }
+  }).filter(item => item.name || item.category || item.price !== '' || item.stock !== '')
+}
+
+function downloadProductTemplate() {
+  if (!window.XLSX) { toast('Excel 组件还没加载完成'); return }
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['名称', '分类', '价格', '原价', '库存', '图片', '描述', '热销', '新品', '状态'],
+    ['示例防晒霜', '美妆个护', 89, 129, 400, 'https://example.com/a.jpg,https://example.com/b.jpg', '清爽防晒', '是', '否', '在售']
+  ])
+  sheet['!cols'] = [14, 12, 10, 10, 10, 42, 20, 8, 8, 8].map(wch => ({ wch }))
+  const note = XLSX.utils.aoa_to_sheet([
+    ['列', '说明'],
+    ['名称', '必填'],
+    ['分类', '必填，要和后台里已有的分类名称一致'],
+    ['价格', '必填，填数字'],
+    ['原价', '可以空着'],
+    ['库存', '必填，填数字'],
+    ['图片', '可以空着。多张图用逗号隔开，最多 9 张，填 http 或 https 链接'],
+    ['描述', '可以空着'],
+    ['热销', '填 是 或 否'],
+    ['新品', '填 是 或 否'],
+    ['状态', '填 在售 或 下架，空着就是在售']
+  ])
+  const book = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(book, sheet, '商品')
+  XLSX.utils.book_append_sheet(book, note, '说明')
+  XLSX.writeFile(book, '商品导入模板.xlsx')
+}
+
+function reviewImportRows(rows) {
+  const names = new Set(categories.map(item => item.name))
+  const ready = []
+  const errors = []
+  rows.forEach(item => {
+    const price = Number(item.price)
+    const stock = Number(item.stock)
+    if (!item.name) errors.push('第 ' + item.row + ' 行缺少名称')
+    else if (!names.has(item.category)) errors.push('第 ' + item.row + ' 行分类不存在：' + (item.category || '空'))
+    else if (!Number.isFinite(price) || price < 0 || !Number.isFinite(stock) || stock < 0) errors.push('第 ' + item.row + ' 行价格或库存不正确')
+    else ready.push(item)
+    if (item.badImages.length) errors.push('第 ' + item.row + ' 行有图片不是链接，这些图片会跳过')
+  })
+  return { ready, errors }
+}
+
+async function renderProducts(view) {
+  await loadCategories()
+  const keyword = view.dataset.keyword || ''
+  const res = await api('admin', { action: 'getProducts', page: 1, pageSize: 50, keyword })
+  const list = res.list || []
+  const urls = await cloudUrls(list.map(p => (p.images || [])[0]))
+  const catName = (id) => (categories.find(c => c._id === id) || {}).name || ''
+  view.innerHTML = `
+    <div class="tools">
+      <input id="prodKw" placeholder="搜索商品" value="${esc(keyword)}">
+      <button class="btn" id="prodSearch">搜索</button>
+      <button class="btn" id="prodAdd">新增商品</button>
+      <button class="btn ghost" id="prodTemplate" type="button">下载模板</button>
+      <button class="btn ghost" id="prodImport" type="button">导入 Excel</button>
+      <input id="prodFile" class="hidden" type="file" accept=".xlsx,.xls,.csv">
+    </div>
+    <div class="card"><table>
+      <tr><th></th><th>名称</th><th>分类</th><th>价格</th><th>库存</th><th>状态</th><th></th></tr>
+      ${list.map(p => `<tr>
+        <td>${showSrc((p.images || [])[0], urls) ? `<img class="thumb" src="${esc(showSrc((p.images || [])[0], urls))}">` : ''}${(p.images || []).length > 1 ? `<div class="hint">${p.images.length} 张</div>` : ''}</td>
+        <td>${esc(p.name)}</td><td>${esc(catName(p.categoryId))}</td>
+        <td>${money(p.price)}</td><td>${p.stock || 0}</td>
+        <td><span class="tag ${p.status === 'on' ? 'on' : 'off'}">${p.status === 'on' ? '在售' : '下架'}</span></td>
+        <td class="actions">
+          <button class="btn ghost small" data-edit="${p._id}">编辑</button>
+          <button class="btn ghost small" data-status="${p._id}" data-next="${p.status === 'on' ? 'off' : 'on'}">${p.status === 'on' ? '下架' : '上架'}</button>
+          <button class="btn danger small" data-del="${p._id}">删除</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="7">暂无商品</td></tr>'}
+    </table><div class="pager">共 ${res.total || 0} 件</div></div>`
+  const openForm = async (p) => {
+    const existing = (p && p.images) || []
+    let shots = existing.map(id => ({ id, preview: showSrc(id, urls) || id }))
+    document.body.insertAdjacentHTML('beforeend', productForm(p || {}))
+    const paint = () => {
+      const box = document.getElementById('shotList')
+      box.innerHTML = shots.map((shot, i) => `
+        <div class="shot">
+          <img src="${esc(shot.preview)}" alt="">
+          <div class="shot-ops">
+            <button type="button" class="btn ghost small" data-move="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>←</button>
+            <button type="button" class="btn ghost small" data-move="${i}" data-dir="1" ${i === shots.length - 1 ? 'disabled' : ''}>→</button>
+            <button type="button" class="btn danger small" data-remove="${i}">删</button>
+          </div>
+        </div>`).join('') || '<div class="hint">还没有图片</div>'
+    }
+    paint()
+    document.getElementById('shotList').onclick = (e) => {
+      const move = e.target.dataset.move
+      const remove = e.target.dataset.remove
+      if (remove != null && e.target.dataset.move == null) {
+        shots.splice(Number(remove), 1)
+        paint()
+      }
+      if (move != null && e.target.dataset.dir) {
+        const i = Number(move)
+        const j = i + Number(e.target.dataset.dir)
+        if (j < 0 || j >= shots.length) return
+        const [item] = shots.splice(i, 1)
+        shots.splice(j, 0, item)
+        paint()
+      }
+    }
+    document.getElementById('imageFiles').onchange = () => {
+      const files = [...document.getElementById('imageFiles').files]
+      for (const file of files) {
+        if (shots.length >= 9) { toast('最多 9 张'); break }
+        if (!file.type.startsWith('image/')) continue
+        shots.push({ file, preview: URL.createObjectURL(file) })
+      }
+      document.getElementById('imageFiles').value = ''
+      paint()
+    }
+    document.getElementById('cancelModal').onclick = () => document.getElementById('modal').remove()
+    document.getElementById('productForm').onsubmit = async (e) => {
+      e.preventDefault()
+      const fd = new FormData(e.target)
+      const images = []
+      try {
+        for (const shot of shots) {
+          if (shot.file) {
+            toast('正在上传图片…')
+            images.push((await uploadLocalImage(shot.file, 'products')).fileID)
+          } else if (shot.id) images.push(shot.id)
+        }
+      } catch (ex) { toast(ex.message); return }
+      const payload = {
+        name: fd.get('name'), description: fd.get('description'),
+        price: Number(fd.get('price')), originalPrice: Number(fd.get('originalPrice') || 0),
+        stock: Number(fd.get('stock') || 0), categoryId: fd.get('categoryId'),
+        images,
+        isHot: fd.get('isHot') === 'on', isNew: fd.get('isNew') === 'on'
+      }
+      try {
+        if (p && p._id) await api('admin', { action: 'updateProduct', productId: p._id, ...payload })
+        else await api('admin', { action: 'addProduct', ...payload })
+        document.getElementById('modal').remove()
+        toast('已保存')
+        renderProducts(view)
+      } catch (ex) { toast(ex.message) }
+    }
+  }
+  document.getElementById('prodSearch').onclick = () => { view.dataset.keyword = document.getElementById('prodKw').value; renderProducts(view) }
+  document.getElementById('prodAdd').onclick = () => openForm()
+  document.getElementById('prodTemplate').onclick = downloadProductTemplate
+  document.getElementById('prodImport').onclick = () => document.getElementById('prodFile').click()
+  document.getElementById('prodFile').onchange = async () => {
+    const file = document.getElementById('prodFile').files[0]
+    document.getElementById('prodFile').value = ''
+    if (!file) return
+    try {
+      const rows = parseProductSheet(await file.arrayBuffer())
+      const reviewed = reviewImportRows(rows)
+      if (!reviewed.ready.length && !reviewed.errors.length) { toast('表格里没有商品'); return }
+      const preview = reviewed.ready.slice(0, 8).map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.category)}</td><td>${esc(item.price)}</td><td>${item.images.length}</td></tr>`).join('')
+      document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="importModal"><div class="card">
+        <h3>导入 ${esc(file.name)}</h3>
+        <p class="hint">可以导入 ${reviewed.ready.length} 个商品${reviewed.errors.length ? '，有 ' + reviewed.errors.length + ' 条提示' : ''}。</p>
+        ${preview ? `<table><tr><th>名称</th><th>分类</th><th>价格</th><th>图片</th></tr>${preview}</table>` : ''}
+        ${reviewed.errors.length ? `<div class="err">${reviewed.errors.slice(0, 8).map(esc).join('<br>')}</div>` : ''}
+        <div class="actions" style="margin-top:14px">
+          <button class="btn" id="importGo" type="button" ${reviewed.ready.length ? '' : 'disabled'}>开始导入</button>
+          <button class="btn ghost" id="importCancel" type="button">取消</button>
+        </div>
+      </div></div>`)
+      document.getElementById('importCancel').onclick = () => document.getElementById('importModal').remove()
+      document.getElementById('importGo').onclick = async () => {
+        const button = document.getElementById('importGo')
+        button.disabled = true
+        let created = 0
+        const failed = []
+        try {
+          for (let i = 0; i < reviewed.ready.length; i += 20) {
+            const part = reviewed.ready.slice(i, i + 20).map(item => ({
+              row: item.row, name: item.name, category: item.category, price: Number(item.price),
+              originalPrice: Number(item.originalPrice) || 0, stock: Number(item.stock),
+              description: item.description, images: item.images, isHot: item.isHot, isNew: item.isNew, status: item.status
+            }))
+            const result = await api('admin', { action: 'importProducts', rows: part })
+            created += result.created || 0
+            ;(result.errors || []).forEach(item => failed.push('第 ' + item.row + ' 行' + item.message))
+          }
+          document.getElementById('importModal').remove()
+          toast(failed.length ? `已导入 ${created} 个，${failed.length} 行没写入` : `已导入 ${created} 个商品`)
+          renderProducts(view)
+        } catch (ex) {
+          button.disabled = false
+          toast(ex.message)
+        }
+      }
+    } catch (ex) { toast(ex.message) }
+  }
+  view.onclick = async (e) => {
+    const t = e.target
+    try {
+      if (t.dataset.edit) openForm(list.find(p => p._id === t.dataset.edit))
+      if (t.dataset.status) {
+        await api('admin', { action: 'updateProduct', productId: t.dataset.status, status: t.dataset.next })
+        toast('已更新')
+        renderProducts(view)
+      }
+      if (t.dataset.del && confirm('确定删除这个商品？')) {
+        await api('admin', { action: 'deleteProduct', productId: t.dataset.del })
+        toast('已删除')
+        renderProducts(view)
+      }
+    } catch (ex) { toast(ex.message) }
+  }
+}
+
+async function renderOrders(view) {
+  const res = await api('admin', { action: 'getOrders', page: 1, pageSize: 50 })
+  view.innerHTML = `<div class="card"><table>
+    <tr><th>订单号</th><th>金额</th><th>状态</th><th>时间</th><th></th></tr>
+    ${(res.list || []).map(o => `<tr>
+      <td>${esc(o.orderNo)}<div style="color:#8a7b72">${(o.items || []).map(i => esc(i.name) + ' x' + i.quantity).join('，')}</div></td>
+      <td>${money(o.finalPrice != null ? o.finalPrice : o.totalPrice)}</td>
+      <td><span class="tag">${ORDER_STATUS[o.status] || o.status}</span></td>
+      <td>${dateText(o.createTime)}</td>
+      <td class="actions">
+        ${o.status === 'paid' ? `<button class="btn small" data-ship="${esc(o.orderNo)}">发货</button>` : ''}
+        ${o.status === 'paid' || o.status === 'shipped' ? `<button class="btn ghost small" data-refund="${esc(o.orderNo)}">退款</button>` : ''}
+        <button class="btn danger small" data-del="${esc(o.orderNo)}">删除</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5">暂无订单</td></tr>'}
+  </table><div class="pager">共 ${res.total || 0} 单</div></div>`
+  view.onclick = async (e) => {
+    const t = e.target
+    try {
+      if (t.dataset.ship) { await api('admin', { action: 'shipOrder', orderNo: t.dataset.ship }); toast('已发货'); renderOrders(view) }
+      if (t.dataset.refund && confirm('确定退款？')) { await api('admin', { action: 'refundOrder', orderNo: t.dataset.refund }); toast('已退款'); renderOrders(view) }
+      if (t.dataset.del && confirm('确定删除订单？')) { await api('admin', { action: 'deleteOrder', orderNo: t.dataset.del }); toast('已删除'); renderOrders(view) }
+    } catch (ex) { toast(ex.message) }
+  }
+}
+
+async function renderBanners(view) {
+  const res = await api('admin', { action: 'getBanners' })
+  const list = res.list || []
+  const urls = await cloudUrls(list.map(b => b.imageUrl))
+  view.innerHTML = `
+    <form class="tools" id="bannerForm">
+      <input name="imageFile" type="file" accept="image/*" required>
+      <input name="link" placeholder="跳转链接，可空" style="width:220px">
+      <button class="btn">上传并添加</button>
+    </form>
+    <div class="hint" style="margin:-6px 0 12px">轮播图从电脑选择，会自动上传到云存储。</div>
+    <div class="card"><table>
+      <tr><th></th><th>链接</th><th>排序</th><th></th></tr>
+      ${list.map(b => `<tr>
+        <td>${showSrc(b.imageUrl, urls) ? `<img class="thumb" src="${esc(showSrc(b.imageUrl, urls))}">` : ''}</td>
+        <td>${esc(b.link || '无')}</td><td>${b.sortOrder || 0}</td>
+        <td><button class="btn danger small" data-del="${b._id}">删除</button></td>
+      </tr>`).join('') || '<tr><td colspan="4">暂无轮播</td></tr>'}
+    </table></div>`
+  document.getElementById('bannerForm').onsubmit = async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    const file = fd.get('imageFile')
+    try {
+      toast('正在上传图片…')
+      const uploaded = await uploadLocalImage(file, 'banners')
+      await api('admin', { action: 'addBanner', imageUrl: uploaded.fileID, link: fd.get('link'), sortOrder: list.length })
+      toast('已添加')
+      renderBanners(view)
+    } catch (ex) { toast(ex.message) }
+  }
+  view.onclick = async (e) => {
+    if (!e.target.dataset.del || !confirm('删除这张轮播？')) return
+    try { await api('admin', { action: 'deleteBanner', bannerId: e.target.dataset.del }); toast('已删除'); renderBanners(view) }
+    catch (ex) { toast(ex.message) }
+  }
+}
+
+async function renderReviews(view) {
+  const res = await api('admin', { action: 'getReviews', page: 1, pageSize: 50 })
+  view.innerHTML = `<div class="card"><table>
+    <tr><th>商品</th><th>评分</th><th>内容</th><th>时间</th><th></th></tr>
+    ${(res.list || []).map(r => `<tr>
+      <td>${esc(r.productName)}</td><td>${r.rating || 0} 星</td>
+      <td>${esc(r.content)}</td><td>${dateText(r.createTime)}</td>
+      <td><button class="btn danger small" data-del="${r._id}">删除</button></td>
+    </tr>`).join('') || '<tr><td colspan="5">暂无评价</td></tr>'}
+  </table></div>`
+  view.onclick = async (e) => {
+    if (!e.target.dataset.del || !confirm('删除这条评价？')) return
+    try { await api('admin', { action: 'deleteReview', reviewId: e.target.dataset.del }); toast('已删除'); renderReviews(view) }
+    catch (ex) { toast(ex.message) }
+  }
+}
+
+async function renderActivities(view) {
+  const res = await api('admin', { action: 'getActivities', page: 1, pageSize: 50 })
+  view.innerHTML = `<div class="card"><table>
+    <tr><th>活动</th><th>类型</th><th>状态</th><th>结束时间</th><th></th></tr>
+    ${(res.list || []).map(a => `<tr>
+      <td>${esc(a.title)}</td><td>${esc(a.type)}</td>
+      <td><span class="tag ${a.status === 'published' ? 'on' : ''}">${a.status === 'published' ? '已发布' : esc(a.status || '草稿')}</span></td>
+      <td>${dateText(a.endTime)}</td>
+      <td class="actions">
+        <button class="btn ghost small" data-toggle="${a._id}" data-status="${a.status === 'published' ? 'draft' : 'published'}">${a.status === 'published' ? '下线' : '发布'}</button>
+        <button class="btn danger small" data-del="${a._id}">删除</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5">暂无活动</td></tr>'}
+  </table></div>`
+  view.onclick = async (e) => {
+    const t = e.target
+    try {
+      if (t.dataset.toggle) {
+        await api('admin', { action: 'toggleActivityStatus', activityId: t.dataset.toggle, status: t.dataset.status })
+        toast('已更新'); renderActivities(view)
+      }
+      if (t.dataset.del && confirm('删除这个活动？')) {
+        await api('admin', { action: 'deleteActivity', activityId: t.dataset.del })
+        toast('已删除'); renderActivities(view)
+      }
+    } catch (ex) { toast(ex.message) }
+  }
+}
+
+if (readSession()) showApp()
+</script>
+</body>
+</html>
