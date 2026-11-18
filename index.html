@@ -90,7 +90,7 @@
     position: fixed; right: 18px; bottom: 18px; background: #2c2420; color: #fff;
     padding: 10px 14px; border-radius: 8px;
   }
-  .pager { margin-top: 12px; color: var(--muted); }
+  .pager { margin-top: 12px; color: var(--muted); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 </style>
 </head>
 <body>
@@ -131,7 +131,8 @@ const TABS = [
   ['orders', '订单'],
   ['banners', '轮播'],
   ['reviews', '评价'],
-  ['activities', '活动']
+  ['activities', '活动'],
+  ['coupons', '优惠券']
 ]
 const ORDER_STATUS = {
   pending: '待付款', paid: '待发货', shipped: '已发货',
@@ -139,6 +140,46 @@ const ORDER_STATUS = {
 }
 let tab = 'overview'
 let categories = []
+const PAGE_SIZE = 50
+const listFilters = {
+  users: { page: 1, keyword: '' },
+  products: { page: 1, keyword: '' },
+  orders: { page: 1, keyword: '', status: '' },
+  reviews: { page: 1 },
+  activities: { page: 1 },
+  coupons: { page: 1 }
+}
+
+function pageCount(total) {
+  return Math.max(1, Math.ceil((Number(total) || 0) / PAGE_SIZE))
+}
+
+async function loadList(section, action) {
+  const filters = listFilters[section]
+  const request = page => api('admin', { ...filters, action, page, pageSize: PAGE_SIZE })
+  const result = await request(filters.page)
+  const lastPage = pageCount(result.total)
+  if (filters.page <= lastPage) return result
+  filters.page = lastPage
+  return await request(lastPage)
+}
+
+function pager(section, total, unit) {
+  const { page } = listFilters[section]
+  const lastPage = pageCount(total)
+  return '<div class="pager"><span>共 ' + (Number(total) || 0) + ' ' + unit + '</span>'
+    + '<button class="btn ghost small" type="button" data-list-page="' + (page - 1) + '" ' + (page <= 1 ? 'disabled' : '') + '>上一页</button>'
+    + '<span>第 ' + page + ' / ' + lastPage + ' 页</span>'
+    + '<button class="btn ghost small" type="button" data-list-page="' + (page + 1) + '" ' + (page >= lastPage ? 'disabled' : '') + '>下一页</button></div>'
+}
+
+document.getElementById('view').addEventListener('click', event => {
+  const button = event.target.closest('button[data-list-page]')
+  const filters = listFilters[tab]
+  if (!button || !filters) return
+  filters.page = Number(button.dataset.listPage)
+  render()
+})
 
 function toast(msg) {
   const el = document.getElementById('toast')
@@ -317,6 +358,7 @@ async function render() {
     if (tab === 'banners') await renderBanners(view)
     if (tab === 'reviews') await renderReviews(view)
     if (tab === 'activities') await renderActivities(view)
+    if (tab === 'coupons') await renderCoupons(view)
   } catch (ex) {
     view.innerHTML = `<div class="card">${esc(ex.message)}</div>`
   }
@@ -353,8 +395,9 @@ async function renderOverview(view) {
 }
 
 async function renderUsers(view) {
-  const keyword = view.dataset.keyword || ''
-  const res = await api('admin', { action: 'getUsers', page: 1, pageSize: 50, keyword })
+  const { keyword } = listFilters.users
+  const res = await loadList('users', 'getUsers')
+  if (tab !== 'users') return
   view.innerHTML = `
     <div class="tools"><input id="userKw" placeholder="搜索手机号或昵称" value="${esc(keyword)}"><button class="btn" id="userSearch">搜索</button></div>
     <div class="card"><table>
@@ -368,8 +411,12 @@ async function renderUsers(view) {
           <button class="btn danger small" data-del="${u._id}">删除</button>
         </td>
       </tr>`).join('') || '<tr><td colspan="5">暂无用户</td></tr>'}
-    </table><div class="pager">共 ${res.total || 0} 人</div></div>`
-  document.getElementById('userSearch').onclick = () => { view.dataset.keyword = document.getElementById('userKw').value; renderUsers(view) }
+    </table>${pager('users', res.total, '人')}</div>`
+  document.getElementById('userSearch').onclick = () => {
+    listFilters.users.keyword = document.getElementById('userKw').value.trim()
+    listFilters.users.page = 1
+    render()
+  }
   view.onclick = async (e) => {
     const ban = e.target.dataset.ban
     const del = e.target.dataset.del
@@ -499,8 +546,9 @@ function reviewImportRows(rows) {
 
 async function renderProducts(view) {
   await loadCategories()
-  const keyword = view.dataset.keyword || ''
-  const res = await api('admin', { action: 'getProducts', page: 1, pageSize: 50, keyword })
+  const { keyword } = listFilters.products
+  const res = await loadList('products', 'getProducts')
+  if (tab !== 'products') return
   const list = res.list || []
   const urls = await cloudUrls(list.map(p => (p.images || [])[0]))
   const catName = (id) => (categories.find(c => c._id === id) || {}).name || ''
@@ -526,7 +574,7 @@ async function renderProducts(view) {
           <button class="btn danger small" data-del="${p._id}">删除</button>
         </td>
       </tr>`).join('') || '<tr><td colspan="7">暂无商品</td></tr>'}
-    </table><div class="pager">共 ${res.total || 0} 件</div></div>`
+    </table>${pager('products', res.total, '件')}</div>`
   const openForm = async (p) => {
     const existing = (p && p.images) || []
     let shots = existing.map(id => ({ id, preview: showSrc(id, urls) || id }))
@@ -599,7 +647,11 @@ async function renderProducts(view) {
       } catch (ex) { toast(ex.message) }
     }
   }
-  document.getElementById('prodSearch').onclick = () => { view.dataset.keyword = document.getElementById('prodKw').value; renderProducts(view) }
+  document.getElementById('prodSearch').onclick = () => {
+    listFilters.products.keyword = document.getElementById('prodKw').value.trim()
+    listFilters.products.page = 1
+    render()
+  }
   document.getElementById('prodAdd').onclick = () => openForm()
   document.getElementById('prodTemplate').onclick = downloadProductTemplate
   document.getElementById('prodImport').onclick = () => document.getElementById('prodFile').click()
@@ -610,6 +662,7 @@ async function renderProducts(view) {
     try {
       const rows = parseProductSheet(await file.arrayBuffer())
       const reviewed = reviewImportRows(rows)
+      const importId = Date.now().toString(36) + Math.random().toString(36).slice(2)
       if (!reviewed.ready.length && !reviewed.errors.length) { toast('表格里没有商品'); return }
       const preview = reviewed.ready.slice(0, 8).map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.category)}</td><td>${esc(item.price)}</td><td>${item.images.length}</td></tr>`).join('')
       document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="importModal"><div class="card">
@@ -635,7 +688,7 @@ async function renderProducts(view) {
               originalPrice: Number(item.originalPrice) || 0, stock: Number(item.stock),
               description: item.description, images: item.images, isHot: item.isHot, isNew: item.isNew, status: item.status
             }))
-            const result = await api('admin', { action: 'importProducts', rows: part })
+            const result = await api('admin', { action: 'importProducts', importId, rows: part })
             created += result.created || 0
             ;(result.errors || []).forEach(item => failed.push('第 ' + item.row + ' 行' + item.message))
           }
@@ -644,6 +697,7 @@ async function renderProducts(view) {
           renderProducts(view)
         } catch (ex) {
           button.disabled = false
+          button.textContent = '重试导入'
           toast(ex.message)
         }
       }
@@ -668,8 +722,17 @@ async function renderProducts(view) {
 }
 
 async function renderOrders(view) {
-  const res = await api('admin', { action: 'getOrders', page: 1, pageSize: 50 })
-  view.innerHTML = `<div class="card"><table>
+  const filters = listFilters.orders
+  const res = await loadList('orders', 'getOrders')
+  if (tab !== 'orders') return
+  const statusOptions = Object.entries(ORDER_STATUS).map(([id, label]) =>
+    '<option value="' + id + '" ' + (id === filters.status ? 'selected' : '') + '>' + label + '</option>'
+  ).join('')
+  view.innerHTML = `<div class="tools">
+    <input id="orderKw" aria-label="订单号" placeholder="输入完整订单号" value="${esc(filters.keyword)}">
+    <select id="orderStatus" aria-label="订单状态"><option value="">全部状态</option>${statusOptions}</select>
+    <button id="orderSearch" type="button" class="btn">筛选</button>
+  </div><div class="card"><table>
     <tr><th>订单号</th><th>金额</th><th>状态</th><th>时间</th><th></th></tr>
     ${(res.list || []).map(o => `<tr>
       <td>${esc(o.orderNo)}<div style="color:#8a7b72">${(o.items || []).map(i => esc(i.name) + ' x' + i.quantity).join('，')}</div></td>
@@ -679,18 +742,47 @@ async function renderOrders(view) {
       <td class="actions">
         ${o.status === 'paid' ? `<button class="btn small" data-ship="${esc(o.orderNo)}">发货</button>` : ''}
         ${o.status === 'paid' || o.status === 'shipped' ? `<button class="btn ghost small" data-refund="${esc(o.orderNo)}">退款</button>` : ''}
+        <button class="btn ghost small" data-detail="${esc(o.orderNo)}">详情</button>
         <button class="btn danger small" data-del="${esc(o.orderNo)}">删除</button>
       </td>
     </tr>`).join('') || '<tr><td colspan="5">暂无订单</td></tr>'}
-  </table><div class="pager">共 ${res.total || 0} 单</div></div>`
+  </table>${pager('orders', res.total, '单')}</div>`
+  document.getElementById('orderSearch').onclick = () => {
+    filters.keyword = document.getElementById('orderKw').value.trim()
+    filters.status = document.getElementById('orderStatus').value
+    filters.page = 1
+    render()
+  }
   view.onclick = async (e) => {
     const t = e.target
     try {
+      if (t.dataset.detail) await openOrderDetails(t.dataset.detail)
       if (t.dataset.ship) { await api('admin', { action: 'shipOrder', orderNo: t.dataset.ship }); toast('已发货'); renderOrders(view) }
       if (t.dataset.refund && confirm('确定退款？')) { await api('admin', { action: 'refundOrder', orderNo: t.dataset.refund }); toast('已退款'); renderOrders(view) }
       if (t.dataset.del && confirm('确定删除订单？')) { await api('admin', { action: 'deleteOrder', orderNo: t.dataset.del }); toast('已删除'); renderOrders(view) }
     } catch (ex) { toast(ex.message) }
   }
+}
+
+
+async function openOrderDetails(orderNo) {
+  const { order } = await api('admin', { action: 'getOrderDetail', orderNo })
+  if (!order) { toast('订单不存在'); return }
+  const address = order.address || {}
+  const region = Array.isArray(address.region) ? address.region.join(' ') : (address.region || '')
+  const rows = (order.items || []).map(item =>
+    '<tr><td>' + esc(item.name) + '</td><td>' + esc(item.quantity) + '</td><td>' + money(item.price) + '</td></tr>'
+  ).join('')
+  const modal = document.createElement('div')
+  modal.className = 'modal'
+  modal.innerHTML = '<div class="card"><h3>订单 ' + esc(orderNo) + '</h3>'
+    + '<p>' + esc(address.name) + ' ' + esc(address.phone) + '</p>'
+    + '<p>' + esc(region) + ' ' + esc(address.detail) + '</p>'
+    + '<table><tr><th>商品</th><th>数量</th><th>单价</th></tr>' + rows + '</table>'
+    + '<p>实付 ' + money(order.finalPrice ?? order.totalPrice) + '</p>'
+    + '<div class="actions"><button class="btn ghost" type="button" data-close-order>关闭</button></div></div>'
+  modal.querySelector('[data-close-order]').onclick = () => modal.remove()
+  document.body.appendChild(modal)
 }
 
 async function renderBanners(view) {
@@ -732,7 +824,8 @@ async function renderBanners(view) {
 }
 
 async function renderReviews(view) {
-  const res = await api('admin', { action: 'getReviews', page: 1, pageSize: 50 })
+  const res = await loadList('reviews', 'getReviews')
+  if (tab !== 'reviews') return
   view.innerHTML = `<div class="card"><table>
     <tr><th>商品</th><th>评分</th><th>内容</th><th>时间</th><th></th></tr>
     ${(res.list || []).map(r => `<tr>
@@ -740,7 +833,7 @@ async function renderReviews(view) {
       <td>${esc(r.content)}</td><td>${dateText(r.createTime)}</td>
       <td><button class="btn danger small" data-del="${r._id}">删除</button></td>
     </tr>`).join('') || '<tr><td colspan="5">暂无评价</td></tr>'}
-  </table></div>`
+  </table>${pager('reviews', res.total, '条')}</div>`
   view.onclick = async (e) => {
     if (!e.target.dataset.del || !confirm('删除这条评价？')) return
     try { await api('admin', { action: 'deleteReview', reviewId: e.target.dataset.del }); toast('已删除'); renderReviews(view) }
@@ -749,7 +842,8 @@ async function renderReviews(view) {
 }
 
 async function renderActivities(view) {
-  const res = await api('admin', { action: 'getActivities', page: 1, pageSize: 50 })
+  const res = await loadList('activities', 'getActivities')
+  if (tab !== 'activities') return
   view.innerHTML = `<div class="card"><table>
     <tr><th>活动</th><th>类型</th><th>状态</th><th>结束时间</th><th></th></tr>
     ${(res.list || []).map(a => `<tr>
@@ -761,7 +855,7 @@ async function renderActivities(view) {
         <button class="btn danger small" data-del="${a._id}">删除</button>
       </td>
     </tr>`).join('') || '<tr><td colspan="5">暂无活动</td></tr>'}
-  </table></div>`
+  </table>${pager('activities', res.total, '场')}</div>`
   view.onclick = async (e) => {
     const t = e.target
     try {
@@ -772,6 +866,129 @@ async function renderActivities(view) {
       if (t.dataset.del && confirm('删除这个活动？')) {
         await api('admin', { action: 'deleteActivity', activityId: t.dataset.del })
         toast('已删除'); renderActivities(view)
+      }
+    } catch (ex) { toast(ex.message) }
+  }
+}
+
+function dateInput(v) {
+  if (!v) return ''
+  const d = new Date(v.$date || v)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function couponText(item) {
+  const value = item.type === 'discount' ? `${item.value}折` : money(item.value)
+  const limit = item.minAmount > 0 ? `满${item.minAmount}` : '无门槛'
+  return `${value} · ${limit}`
+}
+
+function couponForm(item = {}) {
+  const opts = [`<option value="">全场通用</option>`].concat(categories.map(c =>
+    `<option value="${c._id}" ${c._id === item.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`
+  )).join('')
+  return `<div class="modal" id="modal"><form class="card" id="couponForm">
+    <h3>${item._id ? '编辑优惠券' : '新建优惠券'}</h3>
+    <label>名称</label><input name="name" value="${esc(item.name || '')}" required>
+    <div class="row2">
+      <div><label>类型</label>
+        <select name="type">
+          <option value="fixed" ${item.type !== 'discount' ? 'selected' : ''}>满减</option>
+          <option value="discount" ${item.type === 'discount' ? 'selected' : ''}>折扣</option>
+        </select>
+      </div>
+      <div><label>面值</label><input name="value" type="number" step="0.1" min="0.1" value="${item.value || ''}" required></div>
+    </div>
+    <div class="hint">满减填减免金额。折扣填 8 表示 8 折，必须小于 10。</div>
+    <div class="row2">
+      <div><label>使用门槛（0 为无门槛）</label><input name="minAmount" type="number" step="0.01" min="0" value="${item.minAmount || 0}"></div>
+      <div><label>适用分类</label><select name="categoryId">${opts}</select></div>
+    </div>
+    <div class="row2">
+      <div><label>发放数量（0 为不限）</label><input name="total" type="number" min="0" value="${item.total || 0}"></div>
+      <div><label>每人限领</label><input name="perUser" type="number" min="1" max="20" value="${item.perUser || 1}"></div>
+    </div>
+    <label>领取后有效天数</label><input name="validDays" type="number" min="1" max="365" value="${item.validDays || 7}">
+    <div class="row2">
+      <div><label>开始领取</label><input name="startTime" type="datetime-local" value="${dateInput(item.startTime)}"></div>
+      <div><label>停止领取</label><input name="endTime" type="datetime-local" value="${dateInput(item.endTime)}"></div>
+    </div>
+    <div class="hint">领取时间留空表示一直可领。用户领到的券会出现在「我的优惠券」，下单时可以选择。</div>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn" type="submit">保存</button>
+      <button class="btn ghost" type="button" id="cancelModal">取消</button>
+    </div>
+  </form></div>`
+}
+
+async function renderCoupons(view) {
+  await loadCategories()
+  const res = await api('admin', { action: 'getCouponTemplates' })
+  if (tab !== 'coupons') return
+  const list = res.list || []
+  const catName = (id) => id ? ((categories.find(c => c._id === id) || {}).name || '指定分类') : '全场'
+  view.innerHTML = `
+    <div class="tools"><button class="btn" id="couponAdd">新建优惠券</button></div>
+    <div class="card"><table>
+      <tr><th>名称</th><th>优惠</th><th>范围</th><th>领取</th><th>有效期</th><th>状态</th><th></th></tr>
+      ${list.map(item => `<tr>
+        <td>${esc(item.name)}</td>
+        <td>${esc(couponText(item))}</td>
+        <td>${esc(catName(item.categoryId))}</td>
+        <td>${item.claimedCount || 0}${item.total > 0 ? ' / ' + item.total : ' / 不限'}</td>
+        <td>领取后 ${item.validDays || 7} 天</td>
+        <td><span class="tag ${item.status === 'on' ? 'on' : 'off'}">${item.status === 'on' ? '发放中' : '已停发'}</span></td>
+        <td class="actions">
+          <button class="btn ghost small" data-edit="${item._id}">编辑</button>
+          <button class="btn ghost small" data-toggle="${item._id}" data-status="${item.status === 'on' ? 'off' : 'on'}">${item.status === 'on' ? '停发' : '发放'}</button>
+          <button class="btn danger small" data-del="${item._id}">删除</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="7">还没有优惠券。新建后，用户可在小程序「领券中心」领取。</td></tr>'}
+    </table></div>`
+  const openForm = (item) => {
+    document.body.insertAdjacentHTML('beforeend', couponForm(item || {}))
+    document.getElementById('cancelModal').onclick = () => document.getElementById('modal').remove()
+    document.getElementById('couponForm').onsubmit = async (e) => {
+      e.preventDefault()
+      const fd = new FormData(e.target)
+      const payload = {
+        name: fd.get('name'),
+        type: fd.get('type'),
+        value: Number(fd.get('value')),
+        minAmount: Number(fd.get('minAmount') || 0),
+        categoryId: fd.get('categoryId'),
+        total: Number(fd.get('total') || 0),
+        perUser: Number(fd.get('perUser') || 1),
+        validDays: Number(fd.get('validDays') || 7),
+        startTime: fd.get('startTime'),
+        endTime: fd.get('endTime'),
+        status: item && item.status === 'off' ? 'off' : 'on'
+      }
+      try {
+        await api('admin', { action: 'saveCouponTemplate', templateId: item && item._id, ...payload })
+        document.getElementById('modal').remove()
+        toast('已保存')
+        renderCoupons(view)
+      } catch (ex) { toast(ex.message) }
+    }
+  }
+  document.getElementById('couponAdd').onclick = () => openForm()
+  view.onclick = async (e) => {
+    const t = e.target
+    const item = list.find(row => row._id === t.dataset.edit)
+    try {
+      if (t.dataset.edit) openForm(item)
+      if (t.dataset.toggle) {
+        await api('admin', { action: 'toggleCouponTemplate', templateId: t.dataset.toggle, status: t.dataset.status })
+        toast('已更新')
+        renderCoupons(view)
+      }
+      if (t.dataset.del && confirm('删除后不能再领，已经领到的券仍可使用。确定删除？')) {
+        await api('admin', { action: 'deleteCouponTemplate', templateId: t.dataset.del })
+        toast('已删除')
+        renderCoupons(view)
       }
     } catch (ex) { toast(ex.message) }
   }
