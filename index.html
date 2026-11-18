@@ -885,112 +885,124 @@ function couponText(item) {
   return `${value} · ${limit}`
 }
 
-function couponForm(item = {}) {
+function couponForm() {
   const opts = [`<option value="">全场通用</option>`].concat(categories.map(c =>
-    `<option value="${c._id}" ${c._id === item.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`
+    `<option value="${c._id}">${esc(c.name)}</option>`
   )).join('')
   return `<div class="modal" id="modal"><form class="card" id="couponForm">
-    <h3>${item._id ? '编辑优惠券' : '新建优惠券'}</h3>
-    <label>名称</label><input name="name" value="${esc(item.name || '')}" required>
+    <h3>给用户发券</h3>
+    <label>名称</label><input name="name" required>
     <div class="row2">
       <div><label>类型</label>
         <select name="type">
-          <option value="fixed" ${item.type !== 'discount' ? 'selected' : ''}>满减</option>
-          <option value="discount" ${item.type === 'discount' ? 'selected' : ''}>折扣</option>
+          <option value="fixed">满减</option>
+          <option value="discount">折扣</option>
         </select>
       </div>
-      <div><label>面值</label><input name="value" type="number" step="0.1" min="0.1" value="${item.value || ''}" required></div>
+      <div><label>面值</label><input name="value" type="number" step="0.1" min="0.1" required></div>
     </div>
     <div class="hint">满减填减免金额。折扣填 8 表示 8 折，必须小于 10。</div>
     <div class="row2">
-      <div><label>使用门槛（0 为无门槛）</label><input name="minAmount" type="number" step="0.01" min="0" value="${item.minAmount || 0}"></div>
+      <div><label>使用门槛（0 为无门槛）</label><input name="minAmount" type="number" step="0.01" min="0" value="0"></div>
       <div><label>适用分类</label><select name="categoryId">${opts}</select></div>
     </div>
-    <div class="row2">
-      <div><label>发放数量（0 为不限）</label><input name="total" type="number" min="0" value="${item.total || 0}"></div>
-      <div><label>每人限领</label><input name="perUser" type="number" min="1" max="20" value="${item.perUser || 1}"></div>
+    <label>发放后有效天数</label><input name="validDays" type="number" min="1" max="365" value="7">
+    <label>发给哪些用户</label>
+    <div class="tools">
+      <input id="couponUserKw" placeholder="搜索手机号或昵称">
+      <button class="btn ghost" type="button" id="couponUserSearch">搜索</button>
     </div>
-    <label>领取后有效天数</label><input name="validDays" type="number" min="1" max="365" value="${item.validDays || 7}">
-    <div class="row2">
-      <div><label>开始领取</label><input name="startTime" type="datetime-local" value="${dateInput(item.startTime)}"></div>
-      <div><label>停止领取</label><input name="endTime" type="datetime-local" value="${dateInput(item.endTime)}"></div>
-    </div>
-    <div class="hint">领取时间留空表示一直可领。用户领到的券会出现在「我的优惠券」，下单时可以选择。</div>
+    <div id="couponPicked" class="hint">已选 0 人</div>
+    <div id="couponUsers" style="max-height:180px;overflow:auto;border:1px solid #eadfd6;border-radius:8px;padding:8px">输入昵称或手机号后搜索</div>
+    <div class="hint">只发给勾选的用户。其他用户不会看到这张券。</div>
     <div class="actions" style="margin-top:14px">
-      <button class="btn" type="submit">保存</button>
+      <button class="btn" type="submit">发放</button>
       <button class="btn ghost" type="button" id="cancelModal">取消</button>
     </div>
   </form></div>`
 }
 
+function userLabel(user) {
+  return [user.nickName, user.phone].filter(Boolean).join(' · ') || user._id
+}
+
 async function renderCoupons(view) {
   await loadCategories()
-  const res = await api('admin', { action: 'getCouponTemplates' })
+  const res = await api('admin', { action: 'getCouponIssues' })
   if (tab !== 'coupons') return
   const list = res.list || []
   const catName = (id) => id ? ((categories.find(c => c._id === id) || {}).name || '指定分类') : '全场'
   view.innerHTML = `
-    <div class="tools"><button class="btn" id="couponAdd">新建优惠券</button></div>
+    <div class="tools"><button class="btn" id="couponAdd">给用户发券</button></div>
     <div class="card"><table>
-      <tr><th>名称</th><th>优惠</th><th>范围</th><th>领取</th><th>有效期</th><th>状态</th><th></th></tr>
+      <tr><th>名称</th><th>优惠</th><th>范围</th><th>发给</th><th>有效期</th><th>时间</th></tr>
       ${list.map(item => `<tr>
         <td>${esc(item.name)}</td>
         <td>${esc(couponText(item))}</td>
         <td>${esc(catName(item.categoryId))}</td>
-        <td>${item.claimedCount || 0}${item.total > 0 ? ' / ' + item.total : ' / 不限'}</td>
-        <td>领取后 ${item.validDays || 7} 天</td>
-        <td><span class="tag ${item.status === 'on' ? 'on' : 'off'}">${item.status === 'on' ? '发放中' : '已停发'}</span></td>
-        <td class="actions">
-          <button class="btn ghost small" data-edit="${item._id}">编辑</button>
-          <button class="btn ghost small" data-toggle="${item._id}" data-status="${item.status === 'on' ? 'off' : 'on'}">${item.status === 'on' ? '停发' : '发放'}</button>
-          <button class="btn danger small" data-del="${item._id}">删除</button>
-        </td>
-      </tr>`).join('') || '<tr><td colspan="7">还没有优惠券。新建后，用户可在小程序「领券中心」领取。</td></tr>'}
+        <td>${esc((item.userNames || []).join('、'))}</td>
+        <td>发放后 ${item.validDays || 7} 天</td>
+        <td>${dateText(item.createTime)}</td>
+      </tr>`).join('') || '<tr><td colspan="6">还没有发放记录。点「给用户发券」，勾选用户后再发放。</td></tr>'}
     </table></div>`
-  const openForm = (item) => {
-    document.body.insertAdjacentHTML('beforeend', couponForm(item || {}))
+  document.getElementById('couponAdd').onclick = () => {
+    const picked = new Map()
+    document.body.insertAdjacentHTML('beforeend', couponForm())
+    const paintPicked = () => {
+      const names = [...picked.values()].map(userLabel)
+      document.getElementById('couponPicked').textContent = names.length
+        ? `已选 ${names.length} 人：${names.join('、')}`
+        : '已选 0 人'
+    }
+    const paintUsers = (users) => {
+      const box = document.getElementById('couponUsers')
+      box.innerHTML = users.length ? users.map(user => `
+        <label style="display:flex;gap:8px;align-items:center;margin:6px 0">
+          <input type="checkbox" data-user="${user._id}" ${picked.has(user._id) ? 'checked' : ''} style="width:auto">
+          ${esc(userLabel(user))}
+        </label>`).join('') : '<div class="hint">没有找到用户</div>'
+      box.querySelectorAll('[data-user]').forEach(input => {
+        input.onchange = () => {
+          const user = users.find(item => item._id === input.dataset.user)
+          if (input.checked) picked.set(user._id, user)
+          else picked.delete(user._id)
+          paintPicked()
+        }
+      })
+    }
+    const searchUsers = async () => {
+      const keyword = document.getElementById('couponUserKw').value.trim()
+      try {
+        const found = await api('admin', { action: 'getUsers', keyword, page: 1, pageSize: 20 })
+        paintUsers(found.list || [])
+      } catch (ex) { toast(ex.message) }
+    }
+    document.getElementById('couponUserSearch').onclick = searchUsers
+    document.getElementById('couponUserKw').onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); searchUsers() }
+    }
     document.getElementById('cancelModal').onclick = () => document.getElementById('modal').remove()
+    searchUsers()
     document.getElementById('couponForm').onsubmit = async (e) => {
       e.preventDefault()
+      if (picked.size === 0) { toast('请选择要发放的用户'); return }
       const fd = new FormData(e.target)
-      const payload = {
-        name: fd.get('name'),
-        type: fd.get('type'),
-        value: Number(fd.get('value')),
-        minAmount: Number(fd.get('minAmount') || 0),
-        categoryId: fd.get('categoryId'),
-        total: Number(fd.get('total') || 0),
-        perUser: Number(fd.get('perUser') || 1),
-        validDays: Number(fd.get('validDays') || 7),
-        startTime: fd.get('startTime'),
-        endTime: fd.get('endTime'),
-        status: item && item.status === 'off' ? 'off' : 'on'
-      }
       try {
-        await api('admin', { action: 'saveCouponTemplate', templateId: item && item._id, ...payload })
+        const result = await api('admin', {
+          action: 'issueCoupon',
+          name: fd.get('name'),
+          type: fd.get('type'),
+          value: Number(fd.get('value')),
+          minAmount: Number(fd.get('minAmount') || 0),
+          categoryId: fd.get('categoryId'),
+          validDays: Number(fd.get('validDays') || 7),
+          userIds: [...picked.keys()]
+        })
         document.getElementById('modal').remove()
-        toast('已保存')
+        toast(`已发给 ${result.count} 位用户`)
         renderCoupons(view)
       } catch (ex) { toast(ex.message) }
     }
-  }
-  document.getElementById('couponAdd').onclick = () => openForm()
-  view.onclick = async (e) => {
-    const t = e.target
-    const item = list.find(row => row._id === t.dataset.edit)
-    try {
-      if (t.dataset.edit) openForm(item)
-      if (t.dataset.toggle) {
-        await api('admin', { action: 'toggleCouponTemplate', templateId: t.dataset.toggle, status: t.dataset.status })
-        toast('已更新')
-        renderCoupons(view)
-      }
-      if (t.dataset.del && confirm('删除后不能再领，已经领到的券仍可使用。确定删除？')) {
-        await api('admin', { action: 'deleteCouponTemplate', templateId: t.dataset.del })
-        toast('已删除')
-        renderCoupons(view)
-      }
-    } catch (ex) { toast(ex.message) }
   }
 }
 
