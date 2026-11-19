@@ -452,6 +452,11 @@ function productForm(p = {}) {
     <input id="imageFiles" type="file" accept="image/*" multiple>
     <div class="hint">最多 9 张，可左右调整顺序。小程序商品页按这个顺序轮播。</div>
     <label>描述</label><textarea name="description">${esc(p.description || '')}</textarea>
+    <div class="row2">
+      <div><label>视频号 ID</label><input name="channelsFinderId" value="${esc(p.channelsFinderId || '')}" placeholder="sph 开头，可留空"></div>
+      <div><label>视频 ID</label><input name="channelsFeedId" value="${esc(p.channelsFeedId || '')}" placeholder="留空则详情页不显示"></div>
+    </div>
+    <div class="hint">有视频介绍时，到视频号助手复制这条视频的 ID。详情页会显示「观看视频介绍」，点击后打开你的视频号播放。小程序需要和这个视频号绑定。</div>
     <label><input type="checkbox" name="isHot" ${p.isHot ? 'checked' : ''} style="width:auto"> 热销</label>
     <label><input type="checkbox" name="isNew" ${p.isNew ? 'checked' : ''} style="width:auto"> 新品</label>
     <div class="actions" style="margin-top:14px">
@@ -636,6 +641,8 @@ async function renderProducts(view) {
         price: Number(fd.get('price')), originalPrice: Number(fd.get('originalPrice') || 0),
         stock: Number(fd.get('stock') || 0), categoryId: fd.get('categoryId'),
         images,
+        channelsFinderId: String(fd.get('channelsFinderId') || '').trim(),
+        channelsFeedId: String(fd.get('channelsFeedId') || '').trim(),
         isHot: fd.get('isHot') === 'on', isNew: fd.get('isNew') === 'on'
       }
       try {
