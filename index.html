@@ -452,6 +452,13 @@ function productForm(p = {}) {
     <input id="imageFiles" type="file" accept="image/*" multiple>
     <div class="hint">最多 9 张，可左右调整顺序。小程序商品页按这个顺序轮播。</div>
     <label>描述</label><textarea name="description">${esc(p.description || '')}</textarea>
+    <label>偏远地区邮费</label>
+    <div class="row2">
+      ${['新疆', '西藏', '内蒙古', '青海', '宁夏', '甘肃', '海南'].map(name => `
+        <div><label>${name}</label><input name="fee_${name}" type="number" min="0" step="0.01" value="${(p.remoteFees && p.remoteFees[name]) || ''}"></div>
+      `).join('')}
+    </div>
+    <div class="hint">其他省份包邮。留空或填 0，这个偏远省份也包邮。一笔订单只收一次，按商品里该省邮费的最高值。</div>
     <div class="row2">
       <div><label>视频号 ID</label><input name="channelsFinderId" value="${esc(p.channelsFinderId || '')}" placeholder="sph 开头，可留空"></div>
       <div><label>视频 ID</label><input name="channelsFeedId" value="${esc(p.channelsFeedId || '')}" placeholder="留空则详情页不显示"></div>
@@ -643,6 +650,7 @@ async function renderProducts(view) {
         images,
         channelsFinderId: String(fd.get('channelsFinderId') || '').trim(),
         channelsFeedId: String(fd.get('channelsFeedId') || '').trim(),
+        remoteFees: Object.fromEntries(['新疆', '西藏', '内蒙古', '青海', '宁夏', '甘肃', '海南'].map(name => [name, fd.get('fee_' + name)])),
         isHot: fd.get('isHot') === 'on', isNew: fd.get('isNew') === 'on'
       }
       try {
@@ -786,6 +794,7 @@ async function openOrderDetails(orderNo) {
     + '<p>' + esc(address.name) + ' ' + esc(address.phone) + '</p>'
     + '<p>' + esc(region) + ' ' + esc(address.detail) + '</p>'
     + '<table><tr><th>商品</th><th>数量</th><th>单价</th></tr>' + rows + '</table>'
+    + (order.freightAmount > 0 ? '<p>运费 ' + money(order.freightAmount) + '</p>' : '<p>运费 包邮</p>')
     + '<p>实付 ' + money(order.finalPrice ?? order.totalPrice) + '</p>'
     + '<div class="actions"><button class="btn ghost" type="button" data-close-order>关闭</button></div></div>'
   modal.querySelector('[data-close-order]').onclick = () => modal.remove()
