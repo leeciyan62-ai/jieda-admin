@@ -451,7 +451,9 @@ function productForm(p = {}) {
     <div class="shots" id="shotList"></div>
     <input id="imageFiles" type="file" accept="image/*" multiple>
     <div class="hint">最多 9 张，可左右调整顺序。小程序商品页按这个顺序轮播。</div>
+    <label>品牌</label><input name="brand" value="${esc(p.brand || '')}" placeholder="可留空">
     <label>描述</label><textarea name="description">${esc(p.description || '')}</textarea>
+    <div class="hint">${(p.detailImages || []).length ? '已有 ' + p.detailImages.length + ' 张详情长图，显示在描述下面。' : '详情长图可在素材包导入时自动带上。'}</div>
     <label>偏远地区邮费</label>
     <div class="row2">
       ${['新疆', '西藏', '内蒙古', '青海', '宁夏', '甘肃', '海南'].map(name => `
@@ -490,16 +492,46 @@ function flagCell(value) {
   return ['是', '1', 'true', 'yes', 'y', '热销', '新品'].includes(String(value || '').trim().toLowerCase())
 }
 
+function cellIncludes(row, text) {
+  const key = Object.keys(row).find(item => String(item).includes(text))
+  return key == null ? '' : row[key]
+}
+
+function isMaterialRow(row) {
+  return Object.keys(row).some(item => String(item).includes('商城素材'))
+}
+
+function parseMaterialSheet(rows) {
+  return rows.map((row, index) => {
+    const spec = String(cellIncludes(row, '规格') || '').trim()
+    const params = String(cellIncludes(row, '产品参数') || '').trim()
+    const selling = String(cellIncludes(row, '产品卖点') || '').trim()
+    const warranty = String(cellIncludes(row, '保质期') || cellIncludes(row, '产品质保') || '').trim()
+    return {
+      row: index + 2,
+      name: String(cellIncludes(row, '产品名称') || '').trim(),
+      brand: String(cellIncludes(row, '品牌') || '').trim(),
+      category: String(cellIncludes(row, '分类') || '').trim(),
+      price: cellIncludes(row, '终端供价') || cellIncludes(row, '售价'),
+      originalPrice: cellIncludes(row, '电商到手价') || cellIncludes(row, '门店零售价') || cellIncludes(row, '划线价'),
+      description: [selling, spec && ('规格：' + spec), params && ('参数：' + params), warranty && ('保质期：' + warranty)].filter(Boolean).join('\n'),
+      materialUrl: String(cellIncludes(row, '商城素材') || '').trim()
+    }
+  }).filter(item => item.name || item.materialUrl || item.price !== '')
+}
+
 function parseProductSheet(buffer) {
   if (!window.XLSX) throw new Error('Excel 组件还没加载完成')
   const book = XLSX.read(buffer, { type: 'array' })
   const sheet = book.Sheets[book.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-  return rows.map((row, index) => {
+  if (rows.some(isMaterialRow)) return { kind: 'material', rows: parseMaterialSheet(rows) }
+  return { kind: 'plain', rows: rows.map((row, index) => {
     const images = splitImageCell(sheetCell(row, ['图片', '图片链接', 'images']))
     return {
       row: index + 2,
       name: String(sheetCell(row, ['名称', '商品名称', 'name'])).trim(),
+      brand: String(sheetCell(row, ['品牌', 'brand'])).trim(),
       category: String(sheetCell(row, ['分类', 'category'])).trim(),
       price: sheetCell(row, ['价格', 'price']),
       originalPrice: sheetCell(row, ['原价', 'originalPrice']),
@@ -511,19 +543,20 @@ function parseProductSheet(buffer) {
       isNew: flagCell(sheetCell(row, ['新品', 'isNew'])),
       status: ['下架', 'off', '0'].includes(String(sheetCell(row, ['状态', 'status'])).trim().toLowerCase()) ? 'off' : 'on'
     }
-  }).filter(item => item.name || item.category || item.price !== '' || item.stock !== '')
+  }).filter(item => item.name || item.category || item.price !== '' || item.stock !== '') }
 }
 
 function downloadProductTemplate() {
   if (!window.XLSX) { toast('Excel 组件还没加载完成'); return }
   const sheet = XLSX.utils.aoa_to_sheet([
-    ['名称', '分类', '价格', '原价', '库存', '图片', '描述', '热销', '新品', '状态'],
-    ['示例防晒霜', '美妆个护', 89, 129, 400, 'https://example.com/a.jpg,https://example.com/b.jpg', '清爽防晒', '是', '否', '在售']
+    ['名称', '品牌', '分类', '价格', '原价', '库存', '图片', '描述', '热销', '新品', '状态'],
+    ['示例防晒霜', '示例品牌', '美妆个护', 89, 129, 400, 'https://example.com/a.jpg,https://example.com/b.jpg', '清爽防晒', '是', '否', '在售']
   ])
-  sheet['!cols'] = [14, 12, 10, 10, 10, 42, 20, 8, 8, 8].map(wch => ({ wch }))
+  sheet['!cols'] = [14, 12, 12, 10, 10, 10, 42, 20, 8, 8, 8].map(wch => ({ wch }))
   const note = XLSX.utils.aoa_to_sheet([
     ['列', '说明'],
     ['名称', '必填'],
+    ['品牌', '可以空着，最长 40 个字。小程序里按品牌显示色标'],
     ['分类', '必填，要和后台里已有的分类名称一致'],
     ['价格', '必填，填数字'],
     ['原价', '可以空着'],
@@ -540,6 +573,20 @@ function downloadProductTemplate() {
   XLSX.writeFile(book, '商品导入模板.xlsx')
 }
 
+function reviewMaterialRows(rows) {
+  const ready = []
+  const errors = []
+  rows.forEach(item => {
+    const price = Number(item.price)
+    if (!item.name) errors.push('第 ' + item.row + ' 行缺少名称')
+    else if (!item.category) errors.push('第 ' + item.row + ' 行缺少分类')
+    else if (!Number.isFinite(price) || price < 0) errors.push('第 ' + item.row + ' 行价格不正确')
+    else if (!/^https:\/\/\S+$/i.test(item.materialUrl)) errors.push('第 ' + item.row + ' 行缺少素材包链接')
+    else ready.push(item)
+  })
+  return { ready, errors }
+}
+
 function reviewImportRows(rows) {
   const names = new Set(categories.map(item => item.name))
   const ready = []
@@ -550,6 +597,7 @@ function reviewImportRows(rows) {
     if (!item.name) errors.push('第 ' + item.row + ' 行缺少名称')
     else if (!names.has(item.category)) errors.push('第 ' + item.row + ' 行分类不存在：' + (item.category || '空'))
     else if (!Number.isFinite(price) || price < 0 || !Number.isFinite(stock) || stock < 0) errors.push('第 ' + item.row + ' 行价格或库存不正确')
+    else if (String(item.brand || '').trim().length > 40) errors.push('第 ' + item.row + ' 行品牌名称过长')
     else ready.push(item)
     if (item.badImages.length) errors.push('第 ' + item.row + ' 行有图片不是链接，这些图片会跳过')
   })
@@ -574,18 +622,18 @@ async function renderProducts(view) {
       <input id="prodFile" class="hidden" type="file" accept=".xlsx,.xls,.csv">
     </div>
     <div class="card"><table>
-      <tr><th></th><th>名称</th><th>分类</th><th>价格</th><th>库存</th><th>状态</th><th></th></tr>
+      <tr><th></th><th>名称</th><th>品牌</th><th>分类</th><th>价格</th><th>库存</th><th>销量</th><th>状态</th><th></th></tr>
       ${list.map(p => `<tr>
         <td>${showSrc((p.images || [])[0], urls) ? `<img class="thumb" src="${esc(showSrc((p.images || [])[0], urls))}">` : ''}${(p.images || []).length > 1 ? `<div class="hint">${p.images.length} 张</div>` : ''}</td>
-        <td>${esc(p.name)}</td><td>${esc(catName(p.categoryId))}</td>
-        <td>${money(p.price)}</td><td>${p.stock || 0}</td>
+        <td>${esc(p.name)}</td><td>${esc(p.brand || '')}</td><td>${esc(catName(p.categoryId))}</td>
+        <td>${money(p.price)}</td><td>${p.stock || 0}</td><td>${Number(p.sales) || 0}</td>
         <td><span class="tag ${p.status === 'on' ? 'on' : 'off'}">${p.status === 'on' ? '在售' : '下架'}</span></td>
         <td class="actions">
           <button class="btn ghost small" data-edit="${p._id}">编辑</button>
           <button class="btn ghost small" data-status="${p._id}" data-next="${p.status === 'on' ? 'off' : 'on'}">${p.status === 'on' ? '下架' : '上架'}</button>
           <button class="btn danger small" data-del="${p._id}">删除</button>
         </td>
-      </tr>`).join('') || '<tr><td colspan="7">暂无商品</td></tr>'}
+      </tr>`).join('') || '<tr><td colspan="9">暂无商品</td></tr>'}
     </table>${pager('products', res.total, '件')}</div>`
   const openForm = async (p) => {
     const existing = (p && p.images) || []
@@ -648,6 +696,7 @@ async function renderProducts(view) {
         price: Number(fd.get('price')), originalPrice: Number(fd.get('originalPrice') || 0),
         stock: Number(fd.get('stock') || 0), categoryId: fd.get('categoryId'),
         images,
+        brand: String(fd.get('brand') || '').trim(),
         channelsFinderId: String(fd.get('channelsFinderId') || '').trim(),
         channelsFeedId: String(fd.get('channelsFeedId') || '').trim(),
         remoteFees: Object.fromEntries(['新疆', '西藏', '内蒙古', '青海', '宁夏', '甘肃', '海南'].map(name => [name, fd.get('fee_' + name)])),
@@ -675,15 +724,19 @@ async function renderProducts(view) {
     document.getElementById('prodFile').value = ''
     if (!file) return
     try {
-      const rows = parseProductSheet(await file.arrayBuffer())
-      const reviewed = reviewImportRows(rows)
+      const parsed = parseProductSheet(await file.arrayBuffer())
+      const reviewed = parsed.kind === 'material' ? reviewMaterialRows(parsed.rows) : reviewImportRows(parsed.rows)
       const importId = Date.now().toString(36) + Math.random().toString(36).slice(2)
       if (!reviewed.ready.length && !reviewed.errors.length) { toast('表格里没有商品'); return }
-      const preview = reviewed.ready.slice(0, 8).map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.category)}</td><td>${esc(item.price)}</td><td>${item.images.length}</td></tr>`).join('')
+      const preview = reviewed.ready.slice(0, 8).map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.brand || '')}</td><td>${esc(item.category)}</td><td>${esc(item.price)}</td><td>${parsed.kind === 'material' ? '素材包' : item.images.length}</td></tr>`).join('')
+      const materialHint = parsed.kind === 'material'
+        ? '这是素材包表格。封面取素材包第一张主图，详情顶部横滑放 5 张主图，长图放在描述下面。表里没有库存，新商品先按 999。分类没有的会新建。同一商品再导一次会更新图片，不改库存。'
+        : ''
       document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="importModal"><div class="card">
         <h3>导入 ${esc(file.name)}</h3>
         <p class="hint">可以导入 ${reviewed.ready.length} 个商品${reviewed.errors.length ? '，有 ' + reviewed.errors.length + ' 条提示' : ''}。</p>
-        ${preview ? `<table><tr><th>名称</th><th>分类</th><th>价格</th><th>图片</th></tr>${preview}</table>` : ''}
+        ${materialHint ? `<p class="hint">${materialHint}</p>` : ''}
+        ${preview ? `<table><tr><th>名称</th><th>品牌</th><th>分类</th><th>价格</th><th>图片</th></tr>${preview}</table>` : ''}
         ${reviewed.errors.length ? `<div class="err">${reviewed.errors.slice(0, 8).map(esc).join('<br>')}</div>` : ''}
         <div class="actions" style="margin-top:14px">
           <button class="btn" id="importGo" type="button" ${reviewed.ready.length ? '' : 'disabled'}>开始导入</button>
@@ -697,15 +750,44 @@ async function renderProducts(view) {
         let created = 0
         const failed = []
         try {
-          for (let i = 0; i < reviewed.ready.length; i += 20) {
-            const part = reviewed.ready.slice(i, i + 20).map(item => ({
-              row: item.row, name: item.name, category: item.category, price: Number(item.price),
-              originalPrice: Number(item.originalPrice) || 0, stock: Number(item.stock),
-              description: item.description, images: item.images, isHot: item.isHot, isNew: item.isNew, status: item.status
-            }))
-            const result = await api('admin', { action: 'importProducts', importId, rows: part })
-            created += result.created || 0
-            ;(result.errors || []).forEach(item => failed.push('第 ' + item.row + ' 行' + item.message))
+          if (parsed.kind === 'material') {
+            for (let i = 0; i < reviewed.ready.length; i++) {
+              const item = reviewed.ready[i]
+              button.textContent = '正在下载 ' + (i + 1) + '/' + reviewed.ready.length
+              try {
+                const result = await api('admin', {
+                  action: 'prepareMaterialProduct',
+                  name: item.name, brand: item.brand || '', category: item.category, price: Number(item.price),
+                  originalPrice: Number(item.originalPrice) || 0, description: item.description,
+                  materialUrl: item.materialUrl
+                })
+                const images = []
+                const detailImages = []
+                for (let n = 0; n < (result.short || []).length; n++) {
+                  const saved = await api('admin', { action: 'saveMaterialImage', productId: result.productId, kind: 'short', index: n, url: result.short[n] })
+                  images.push(saved.fileID)
+                }
+                for (let n = 0; n < (result.long || []).length; n++) {
+                  const saved = await api('admin', { action: 'saveMaterialImage', productId: result.productId, kind: 'long', index: n, url: result.long[n] })
+                  detailImages.push(saved.fileID)
+                }
+                await api('admin', { action: 'updateProduct', productId: result.productId, images, detailImages, brand: item.brand || '' })
+                if (result && result.productId) created++
+              } catch (ex) {
+                failed.push('第 ' + item.row + ' 行' + ex.message)
+              }
+            }
+          } else {
+            for (let i = 0; i < reviewed.ready.length; i += 20) {
+              const part = reviewed.ready.slice(i, i + 20).map(item => ({
+                row: item.row, name: item.name, brand: item.brand || '', category: item.category, price: Number(item.price),
+                originalPrice: Number(item.originalPrice) || 0, stock: Number(item.stock),
+                description: item.description, images: item.images, isHot: item.isHot, isNew: item.isNew, status: item.status
+              }))
+              const result = await api('admin', { action: 'importProducts', importId, rows: part })
+              created += result.created || 0
+              ;(result.errors || []).forEach(item => failed.push('第 ' + item.row + ' 行' + item.message))
+            }
           }
           document.getElementById('importModal').remove()
           toast(failed.length ? `已导入 ${created} 个，${failed.length} 行没写入` : `已导入 ${created} 个商品`)
