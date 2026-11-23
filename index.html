@@ -147,6 +147,7 @@ const TABS = [
   ['admins', '管理员'],
   ['products', '商品'],
   ['orders', '订单'],
+  ['notice', '通知'],
   ['banners', '轮播'],
   ['reviews', '评价'],
   ['activities', '活动'],
@@ -527,6 +528,7 @@ async function render() {
     if (tab === 'admins') await renderAdmins(view)
     if (tab === 'products') await renderProducts(view)
     if (tab === 'orders') await renderOrders(view)
+    if (tab === 'notice') await renderNotice(view)
     if (tab === 'banners') await renderBanners(view)
     if (tab === 'reviews') await renderReviews(view)
     if (tab === 'activities') await renderActivities(view)
@@ -1070,6 +1072,44 @@ async function renderProducts(view) {
         toast('已删除')
         renderProducts(view)
       }
+    } catch (ex) { toast(ex.message) }
+  }
+}
+
+async function renderNotice(view) {
+  const notice = await api('admin', { action: 'getShipNotice' })
+  if (tab !== 'notice') return
+  const receivers = notice.receivers || []
+  view.innerHTML = `
+    <div style="display:grid;gap:14px;max-width:640px">
+      <div class="card">
+        <h3 style="margin:0 0 6px">企业微信群</h3>
+        <p class="hint">建一个只拉发货同事的企业微信群，群设置里添加群机器人，把 Webhook 地址贴到这里。顾客付款成功后，群里会马上收到订单，用来安排发货。未付款的订单不发。</p>
+        <form id="noticeForm">
+          <label>群机器人 Webhook</label>
+          <input name="webhookUrl" value="${esc(notice.webhookUrl || '')}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." autocomplete="off">
+          <label>订阅消息模板 ID</label>
+          <input name="templateId" value="${esc(notice.templateId || '')}" placeholder="可留空。要发到个人微信服务通知时再填" autocomplete="off">
+          <p class="hint">个人微信不能由服务器随意推送。要发到某个微信，先在小程序后台「功能 → 订阅消息」添加模板，关键词按顺序选：订单号、商品名称、订单金额、下单时间、收货信息。把模板 ID 填在上面。再用那个管理员微信打开小程序管理页，点「接收新订单提醒」。点一次只能收一单。</p>
+          <button class="btn" style="margin-top:14px" type="submit">保存</button>
+        </form>
+      </div>
+      <div class="card"><table>
+        <tr><th>微信</th><th>还能接收</th></tr>
+        ${receivers.map(item => `<tr><td>${esc(item.name)}</td><td>${item.quota} 次</td></tr>`).join('') || '<tr><td colspan="2">还没有人在小程序里点过接收</td></tr>'}
+      </table></div>
+    </div>`
+  document.getElementById('noticeForm').onsubmit = async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    try {
+      await api('admin', {
+        action: 'saveShipNotice',
+        webhookUrl: fd.get('webhookUrl'),
+        templateId: fd.get('templateId')
+      })
+      toast('通知已保存')
+      renderNotice(view)
     } catch (ex) { toast(ex.message) }
   }
 }
