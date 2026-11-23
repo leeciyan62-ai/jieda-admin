@@ -1084,7 +1084,7 @@ async function renderNotice(view) {
     <div style="display:grid;gap:14px;max-width:640px">
       <div class="card">
         <h3 style="margin:0 0 6px">企业微信群</h3>
-        <p class="hint">建一个只拉发货同事的企业微信群，群设置里添加群机器人，把 Webhook 地址贴到这里。顾客付款成功后，群里会马上收到订单，用来安排发货。未付款的订单不发。</p>
+        <p class="hint">建一个只拉发货同事的企业微信群，群设置里添加群机器人，把 Webhook 地址贴到这里。顾客刚下单会推一条待付款，付款成功再推一条已付款，方便安排发货。</p>
         <form id="noticeForm">
           <label>群机器人 Webhook</label>
           <input name="webhookUrl" value="${esc(notice.webhookUrl || '')}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." autocomplete="off">
