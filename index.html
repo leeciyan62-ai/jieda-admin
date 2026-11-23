@@ -132,7 +132,8 @@ const TABS = [
   ['banners', '轮播'],
   ['reviews', '评价'],
   ['activities', '活动'],
-  ['coupons', '优惠券']
+  ['coupons', '优惠券'],
+  ['icons', '图标']
 ]
 const ORDER_STATUS = {
   pending: '待付款', paid: '待发货', shipped: '已发货',
@@ -347,6 +348,124 @@ document.getElementById('loginForm').onsubmit = async (e) => {
   }
 }
 
+const TAB_LABELS = { home: '首页', category: '分类', cart: '购物车', user: '我的' }
+
+function iconPreview(value, urls) {
+  const src = showSrc(value, urls)
+  if (src) return `<img class="thumb" src="${esc(src)}">`
+  return `<span class="hint">${esc(value || '默认')}</span>`
+}
+
+async function renderIcons(view) {
+  categories = []
+  await loadCategories()
+  const saved = await api('admin', { action: 'getTabBar' })
+  const tabs = ['home', 'category', 'cart', 'user'].map(key => {
+    const row = (saved.items || []).find(item => item.key === key) || {}
+    return { key, label: TAB_LABELS[key], icon: row.icon || '', selectedIcon: row.selectedIcon || '' }
+  })
+  view._tabs = tabs
+  const urls = await cloudUrls(categories.map(item => item.icon).concat(tabs.flatMap(item => [item.icon, item.selectedIcon])))
+  view.innerHTML = `
+    <div class="card">
+      <h3>首页分类图标</h3>
+      <p class="hint">上传后替换首页分类格子里的图标。不上传就继续显示现在的表情。小程序首页大约两分钟内会换成新图。</p>
+      <table>
+        <tr><th>图标</th><th>分类</th><th></th></tr>
+        ${categories.map(item => `<tr>
+          <td>${iconPreview(item.icon, urls)}</td>
+          <td>${esc(item.name)}</td>
+          <td class="actions">
+            <input class="hidden" id="catIcon_${item._id}" type="file" accept="image/*">
+            <button class="btn ghost small" data-pick="${item._id}" type="button">上传图标</button>
+            <button class="btn ghost small" data-reset="${item._id}" type="button">恢复默认</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="3">暂无分类</td></tr>'}
+      </table>
+    </div>
+    <div class="card">
+      <h3>底部导航图标</h3>
+      <p class="hint">每个位置可以上传未选中、选中两张图。小程序每次切到有底部导航的页面都会读取。留空就用小程序里自带的图标。</p>
+      <table>
+        <tr><th>位置</th><th>未选中</th><th>选中</th><th></th></tr>
+        ${tabs.map(item => `<tr>
+          <td>${item.label}</td>
+          <td>${iconPreview(item.icon, urls)}</td>
+          <td>${iconPreview(item.selectedIcon, urls)}</td>
+          <td class="actions">
+            <input class="hidden" id="tab_${item.key}" type="file" accept="image/*">
+            <input class="hidden" id="tabOn_${item.key}" type="file" accept="image/*">
+            <button class="btn ghost small" data-tab-pick="${item.key}" type="button">未选中</button>
+            <button class="btn ghost small" data-tab-on="${item.key}" type="button">选中</button>
+            <button class="btn ghost small" data-tab-reset="${item.key}" type="button">恢复默认</button>
+          </td>
+        </tr>`).join('')}
+      </table>
+    </div>`
+  view.onclick = async (event) => {
+    const pick = event.target.dataset.pick
+    const reset = event.target.dataset.reset
+    const tabPick = event.target.dataset.tabPick
+    const tabOn = event.target.dataset.tabOn
+    const tabReset = event.target.dataset.tabReset
+    if (pick) document.getElementById('catIcon_' + pick).click()
+    if (tabPick) document.getElementById('tab_' + tabPick).click()
+    if (tabOn) document.getElementById('tabOn_' + tabOn).click()
+    if (reset) {
+      try {
+        await api('admin', { action: 'updateCategory', categoryId: reset, icon: '📦' })
+        toast('已恢复默认')
+        renderIcons(view)
+      } catch (ex) { toast(ex.message) }
+    }
+    if (tabReset) {
+      try {
+        const next = view._tabs.map(item => item.key === tabReset ? { ...item, icon: '', selectedIcon: '' } : item)
+        await api('admin', { action: 'saveTabBar', items: next.map(({ key, icon, selectedIcon }) => ({ key, icon, selectedIcon })) })
+        toast('已恢复默认')
+        renderIcons(view)
+      } catch (ex) { toast(ex.message) }
+    }
+  }
+  categories.forEach(item => {
+    const input = document.getElementById('catIcon_' + item._id)
+    if (!input) return
+    input.onchange = async () => {
+      const file = input.files[0]
+      input.value = ''
+      if (!file) return
+      try {
+        toast('正在上传…')
+        const uploaded = await uploadLocalImage(file, 'icons')
+        await api('admin', { action: 'updateCategory', categoryId: item._id, icon: uploaded.fileID })
+        toast('分类图标已更新')
+        renderIcons(view)
+      } catch (ex) { toast(ex.message) }
+    }
+  })
+  const saveTabIcon = (key, field) => {
+    const input = document.getElementById((field === 'selectedIcon' ? 'tabOn_' : 'tab_') + key)
+    if (!input) return
+    input.onchange = async () => {
+      const file = input.files[0]
+      input.value = ''
+      if (!file) return
+      try {
+        toast('正在上传…')
+        const uploaded = await uploadLocalImage(file, 'icons')
+        const next = view._tabs.map(item => item.key === key ? { ...item, [field]: uploaded.fileID } : item)
+        await api('admin', { action: 'saveTabBar', items: next.map(({ key: id, icon, selectedIcon }) => ({ key: id, icon, selectedIcon })) })
+        toast('导航图标已更新')
+        renderIcons(view)
+      } catch (ex) { toast(ex.message) }
+    }
+  }
+  tabs.forEach(item => {
+    saveTabIcon(item.key, 'icon')
+    saveTabIcon(item.key, 'selectedIcon')
+  })
+}
+
 async function render() {
   const view = document.getElementById('view')
   view.innerHTML = '<div class="card">加载中…</div>'
@@ -359,6 +478,7 @@ async function render() {
     if (tab === 'reviews') await renderReviews(view)
     if (tab === 'activities') await renderActivities(view)
     if (tab === 'coupons') await renderCoupons(view)
+    if (tab === 'icons') await renderIcons(view)
   } catch (ex) {
     view.innerHTML = `<div class="card">${esc(ex.message)}</div>`
   }
