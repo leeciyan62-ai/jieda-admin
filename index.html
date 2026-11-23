@@ -99,11 +99,28 @@
     <h1>皆达欢喜</h1>
     <p>电脑端管理后台。打开网页就能管商品和订单，不需要开着微信开发者工具。</p>
     <label>账号</label>
-    <input name="username" value="admin" autocomplete="username" required>
+    <input name="username" autocomplete="username" required placeholder="后台开通的账号">
     <label>密码</label>
     <input name="password" type="password" autocomplete="current-password" required>
     <button class="btn" type="submit">登录</button>
     <div class="err" id="loginErr"></div>
+  </form>
+</section>
+
+<section class="login hidden" id="setupView">
+  <form class="login-card" id="setupForm">
+    <h1>开通管理员</h1>
+    <p>当前还是初始账号。开通正式账号后，初始账号和小程序里的管理员入口都只能使用这里设置的账号。</p>
+    <label>账号</label>
+    <input name="username" required placeholder="字母开头，2 到 20 位" autocomplete="off">
+    <label>显示名</label>
+    <input name="nickName" placeholder="例如 店长" autocomplete="off">
+    <label>密码</label>
+    <input name="password" type="password" required placeholder="至少 8 位，不要用 admin123" autocomplete="new-password">
+    <label>再输一次密码</label>
+    <input name="confirm" type="password" required autocomplete="new-password">
+    <button class="btn" type="submit">开通并重新登录</button>
+    <div class="err" id="setupErr"></div>
   </form>
 </section>
 
@@ -127,6 +144,7 @@
 const TABS = [
   ['overview', '概览'],
   ['users', '用户'],
+  ['admins', '管理员'],
   ['products', '商品'],
   ['orders', '订单'],
   ['banners', '轮播'],
@@ -301,10 +319,17 @@ function showSrc(value, urls) {
 
 function showLogin() {
   document.getElementById('loginView').classList.remove('hidden')
+  document.getElementById('setupView').classList.add('hidden')
+  document.getElementById('appView').classList.add('hidden')
+}
+function showSetup() {
+  document.getElementById('loginView').classList.add('hidden')
+  document.getElementById('setupView').classList.remove('hidden')
   document.getElementById('appView').classList.add('hidden')
 }
 function showApp() {
   document.getElementById('loginView').classList.add('hidden')
+  document.getElementById('setupView').classList.add('hidden')
   document.getElementById('appView').classList.remove('hidden')
   document.getElementById('nav').innerHTML = TABS.map(([id, name]) =>
     `<button data-tab="${id}" class="${id === tab ? 'active' : ''}">${name}</button>`
@@ -342,7 +367,34 @@ document.getElementById('loginForm').onsubmit = async (e) => {
     if (!body.success || !user || !user.sessionToken) throw new Error(body.message || '登录失败')
     localStorage.setItem(SESSION_KEY, JSON.stringify({ uid: user._id, token: user.sessionToken }))
     err.textContent = ''
-    showApp()
+    if (body.data.setupRequired) showSetup()
+    else showApp()
+  } catch (ex) {
+    err.textContent = ex.message
+  }
+}
+document.getElementById('setupForm').onsubmit = async (e) => {
+  e.preventDefault()
+  const err = document.getElementById('setupErr')
+  const fd = new FormData(e.target)
+  if (fd.get('password') !== fd.get('confirm')) {
+    err.textContent = '两次密码不一致'
+    return
+  }
+  err.textContent = '正在开通…'
+  try {
+    await api('admin', {
+      action: 'saveAdmin',
+      username: fd.get('username'),
+      nickName: fd.get('nickName'),
+      password: fd.get('password')
+    })
+    const current = readSession()
+    if (current) await callCloud('auth', { action: 'logout', _uid: current.uid, _token: current.token }).catch(() => {})
+    localStorage.removeItem(SESSION_KEY)
+    e.target.reset()
+    showLogin()
+    document.getElementById('loginErr').textContent = '已开通。请用新账号登录，初始账号不能再使用。'
   } catch (ex) {
     err.textContent = ex.message
   }
@@ -472,6 +524,7 @@ async function render() {
   try {
     if (tab === 'overview') await renderOverview(view)
     if (tab === 'users') await renderUsers(view)
+    if (tab === 'admins') await renderAdmins(view)
     if (tab === 'products') await renderProducts(view)
     if (tab === 'orders') await renderOrders(view)
     if (tab === 'banners') await renderBanners(view)
@@ -543,6 +596,89 @@ async function renderUsers(view) {
     try {
       if (ban) { await api('admin', { action: 'toggleBan', userId: ban }); toast('已更新'); renderUsers(view) }
       if (del && confirm('确定删除这个用户？')) { await api('admin', { action: 'deleteUser', userId: del }); toast('已删除'); renderUsers(view) }
+    } catch (ex) { toast(ex.message) }
+  }
+}
+
+async function renderAdmins(view) {
+  const res = await api('admin', { action: 'getAdmins' })
+  if (tab !== 'admins') return
+  const list = res.list || []
+  const me = readSession() || {}
+  view.innerHTML = `
+    <div style="display:grid;gap:14px">
+      <div class="card" style="max-width:460px">
+        <h3 style="margin:0 0 6px">开通管理员</h3>
+        <p class="hint">这里开通的账号可以登录电脑后台，也可以登录小程序里的管理员入口。没有在这里设置密码的账号不能登录。</p>
+        <form id="adminCreate">
+          <label>账号</label>
+          <input name="username" required placeholder="字母开头，2 到 20 位" autocomplete="off">
+          <label>显示名</label>
+          <input name="nickName" placeholder="例如 店长" autocomplete="off">
+          <label>密码</label>
+          <input name="password" type="password" required placeholder="至少 8 位，不要用 admin123" autocomplete="new-password">
+          <button class="btn" style="margin-top:14px" type="submit">开通</button>
+        </form>
+      </div>
+      <div class="card"><table>
+        <tr><th>账号</th><th>显示名</th><th>状态</th><th>登录</th><th></th></tr>
+        ${list.map(a => `<tr>
+          <td>${esc(a.username || '未设置')}</td>
+          <td><input data-nick="${a._id}" value="${esc(a.nickName || '')}" style="width:120px"></td>
+          <td><span class="tag ${a.banned ? 'off' : 'on'}">${a.banned ? '已禁用' : '正常'}</span></td>
+          <td>${a.ready ? '可登录' : '未设密码'}</td>
+          <td class="actions">
+            <input data-pass="${a._id}" type="password" placeholder="${a.ready ? '新密码，可留空' : '设置密码'}" style="width:150px" autocomplete="new-password">
+            <button class="btn small" data-save="${a._id}" data-user="${esc(a.username || '')}">保存</button>
+            ${a._id === me.uid ? '<span class="hint">当前账号</span>' : `
+              <button class="btn ghost small" data-enable="${a._id}" data-on="${a.banned ? '1' : '0'}">${a.banned ? '启用' : '禁用'}</button>
+              <button class="btn danger small" data-del="${a._id}">删除</button>`}
+          </td>
+        </tr>`).join('') || '<tr><td colspan="5">还没有管理员</td></tr>'}
+      </table></div>
+    </div>`
+  document.getElementById('adminCreate').onsubmit = async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    try {
+      await api('admin', {
+        action: 'saveAdmin',
+        username: fd.get('username'),
+        nickName: fd.get('nickName'),
+        password: fd.get('password')
+      })
+      toast('已开通')
+      renderAdmins(view)
+    } catch (ex) { toast(ex.message) }
+  }
+  view.onclick = async (e) => {
+    const save = e.target.dataset.save
+    const enable = e.target.dataset.enable
+    const del = e.target.dataset.del
+    try {
+      if (save) {
+        const nick = view.querySelector(`[data-nick="${save}"]`)
+        const pass = view.querySelector(`[data-pass="${save}"]`)
+        await api('admin', {
+          action: 'saveAdmin',
+          adminId: save,
+          username: e.target.dataset.user,
+          nickName: nick ? nick.value : '',
+          password: pass ? pass.value : ''
+        })
+        toast('已保存')
+        renderAdmins(view)
+      }
+      if (enable) {
+        await api('admin', { action: 'setAdminEnabled', adminId: enable, enabled: e.target.dataset.on === '1' })
+        toast('已更新')
+        renderAdmins(view)
+      }
+      if (del && confirm('确定删除这个管理员？')) {
+        await api('admin', { action: 'deleteAdmin', adminId: del })
+        toast('已删除')
+        renderAdmins(view)
+      }
     } catch (ex) { toast(ex.message) }
   }
 }
