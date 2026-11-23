@@ -1235,31 +1235,206 @@ async function renderReviews(view) {
   }
 }
 
+function activityStatusText(status) {
+  if (status === 'published') return '已发布'
+  if (status === 'offline') return '已下线'
+  return '草稿'
+}
+
+function activityTaskText(activity) {
+  const task = activity.taskConfig || {}
+  if (activity.taskType === 'purchase') return `消费满 ${task.minAmount || 0} 元`
+  return `浏览 ${task.browseSeconds || 60} 秒`
+}
+
+function activityRewardText(activity) {
+  const reward = activity.rewardConfig || {}
+  if (activity.type === 'prize') return reward.prizeName || '奖品'
+  if (reward.couponType === 'discount') return `${reward.couponValue} 折券`
+  return `${money(reward.couponValue)} 券`
+}
+
+function setField(form, name, value) {
+  const el = form.elements.namedItem(name)
+  if (el) el.value = value == null ? '' : value
+}
+
+function syncActivityFields(form) {
+  const task = form.elements.namedItem('taskType').value
+  const type = form.elements.namedItem('type').value
+  form.querySelectorAll('[data-show-task]').forEach(el => el.classList.toggle('hidden', el.dataset.showTask !== task))
+  form.querySelectorAll('[data-show-type]').forEach(el => el.classList.toggle('hidden', el.dataset.showType !== type))
+}
+
+function activityPayload(fd, image) {
+  return {
+    title: fd.get('title'),
+    description: fd.get('description'),
+    image,
+    type: fd.get('type'),
+    taskType: fd.get('taskType'),
+    status: fd.get('status'),
+    startTime: fd.get('startTime'),
+    endTime: fd.get('endTime'),
+    taskConfig: {
+      browseSeconds: fd.get('browseSeconds'),
+      minAmount: fd.get('taskMinAmount')
+    },
+    rewardConfig: {
+      couponType: fd.get('couponType'),
+      couponValue: fd.get('couponValue'),
+      minAmount: fd.get('couponMinAmount'),
+      validDays: fd.get('validDays'),
+      totalQuantity: fd.get('type') === 'prize' ? fd.get('prizeQuantity') : fd.get('couponQuantity'),
+      categoryId: fd.get('categoryId') || null,
+      prizeName: fd.get('prizeName'),
+      prizeImage: fd.get('prizeImage')
+    }
+  }
+}
+
 async function renderActivities(view) {
+  await loadCategories()
   const res = await loadList('activities', 'getActivities')
   if (tab !== 'activities') return
-  view.innerHTML = `<div class="card"><table>
-    <tr><th>活动</th><th>类型</th><th>状态</th><th>结束时间</th><th></th></tr>
-    ${(res.list || []).map(a => `<tr>
-      <td>${esc(a.title)}</td><td>${esc(a.type)}</td>
-      <td><span class="tag ${a.status === 'published' ? 'on' : ''}">${a.status === 'published' ? '已发布' : esc(a.status || '草稿')}</span></td>
-      <td>${dateText(a.endTime)}</td>
-      <td class="actions">
-        <button class="btn ghost small" data-toggle="${a._id}" data-status="${a.status === 'published' ? 'draft' : 'published'}">${a.status === 'published' ? '下线' : '发布'}</button>
-        <button class="btn danger small" data-del="${a._id}">删除</button>
-      </td>
-    </tr>`).join('') || '<tr><td colspan="5">暂无活动</td></tr>'}
-  </table>${pager('activities', res.total, '场')}</div>`
+  const list = res.list || []
+  view._activities = list
+  const now = new Date()
+  const later = new Date(now.getTime() + 30 * 86400000)
+  const startValue = dateInput(now) || ''
+  const endValue = dateInput(later) || ''
+  view.innerHTML = `
+    <div style="display:grid;gap:14px">
+      <form class="card" id="activityForm" style="max-width:760px">
+        <h3 style="margin:0 0 6px">新增活动</h3>
+        <p class="hint">发布后会出现在小程序首页活动区。浏览任务会让用户去商品列表停留，消费任务按订单金额累计。</p>
+        <input type="hidden" name="activityId" value="">
+        <input type="hidden" name="image" value="">
+        <div class="row2">
+          <div><label>标题</label><input name="title" required maxlength="40" placeholder="例如 逛一逛领 5 元券"></div>
+          <div><label>状态</label><select name="status"><option value="published">发布</option><option value="draft">草稿</option><option value="offline">下线</option></select></div>
+        </div>
+        <label>说明</label>
+        <input name="description" maxlength="200" placeholder="显示在活动详情里，可空">
+        <label>封面</label>
+        <input name="imageFile" type="file" accept="image/*">
+        <div class="row2">
+          <div><label>开始</label><input name="startTime" type="datetime-local" required value="${startValue}"></div>
+          <div><label>结束</label><input name="endTime" type="datetime-local" required value="${endValue}"></div>
+        </div>
+        <div class="row2">
+          <div><label>任务</label><select name="taskType"><option value="browse">浏览商品</option><option value="purchase">消费满额</option></select></div>
+          <div><label>奖励</label><select name="type"><option value="coupon">优惠券</option><option value="prize">实物奖品</option></select></div>
+        </div>
+        <div data-show-task="browse"><label>浏览秒数</label><input name="browseSeconds" type="number" min="5" max="600" value="30"></div>
+        <div data-show-task="purchase" class="hidden"><label>消费门槛（元）</label><input name="taskMinAmount" type="number" min="0" step="0.01" value="99"></div>
+        <div data-show-type="coupon">
+          <div class="row2">
+            <div><label>券类型</label><select name="couponType"><option value="fixed">满减</option><option value="discount">折扣</option></select></div>
+            <div><label>面值</label><input name="couponValue" type="number" min="0" step="0.1" value="5" placeholder="满减填金额，折扣填 8 表示 8 折"></div>
+          </div>
+          <div class="row2">
+            <div><label>使用门槛（元，0 为无门槛）</label><input name="couponMinAmount" type="number" min="0" step="0.01" value="0"></div>
+            <div><label>有效天数</label><input name="validDays" type="number" min="1" max="365" value="7"></div>
+          </div>
+          <div class="row2">
+            <div><label>发放数量（0 为不限）</label><input name="couponQuantity" type="number" min="0" value="0"></div>
+            <div><label>可用分类</label><select name="categoryId"><option value="">全场通用</option>${categories.map(c => `<option value="${esc(c._id)}">${esc(c.name)}</option>`).join('')}</select></div>
+          </div>
+        </div>
+        <div data-show-type="prize" class="hidden">
+          <div class="row2">
+            <div><label>奖品名称</label><input name="prizeName" maxlength="40"></div>
+            <div><label>奖品数量（0 为不限）</label><input name="prizeQuantity" type="number" min="0" value="0"></div>
+          </div>
+          <label>奖品图片地址，可空</label>
+          <input name="prizeImage" placeholder="https:// 或云文件地址">
+        </div>
+        <button class="btn" style="margin-top:14px" type="submit">保存活动</button>
+        <button class="btn ghost" style="margin-top:14px;margin-left:8px" type="button" id="activityReset">清空</button>
+      </form>
+      <div class="card"><table>
+        <tr><th>活动</th><th>任务</th><th>奖励</th><th>状态</th><th>结束时间</th><th></th></tr>
+        ${list.map(a => `<tr>
+          <td>${esc(a.title)}</td>
+          <td>${esc(activityTaskText(a))}</td>
+          <td>${esc(activityRewardText(a))}</td>
+          <td><span class="tag ${a.status === 'published' ? 'on' : ''}">${activityStatusText(a.status)}</span></td>
+          <td>${dateText(a.endTime)}</td>
+          <td class="actions">
+            <button class="btn ghost small" data-edit="${a._id}">编辑</button>
+            <button class="btn ghost small" data-toggle="${a._id}" data-status="${a.status === 'published' ? 'offline' : 'published'}">${a.status === 'published' ? '下线' : '发布'}</button>
+            <button class="btn danger small" data-del="${a._id}">删除</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="6">暂无活动</td></tr>'}
+      </table>${pager('activities', res.total, '场')}</div>
+    </div>`
+  const form = document.getElementById('activityForm')
+  syncActivityFields(form)
+  form.elements.namedItem('taskType').onchange = () => syncActivityFields(form)
+  form.elements.namedItem('type').onchange = () => syncActivityFields(form)
+  document.getElementById('activityReset').onclick = () => renderActivities(view)
+  form.onsubmit = async (e) => {
+    e.preventDefault()
+    const fd = new FormData(form)
+    try {
+      let image = String(fd.get('image') || '')
+      const file = fd.get('imageFile')
+      if (file && file.size) {
+        toast('正在上传封面…')
+        image = (await uploadLocalImage(file, 'activities')).fileID
+      }
+      const payload = activityPayload(fd, image)
+      const activityId = String(fd.get('activityId') || '')
+      if (activityId) await api('admin', { action: 'updateActivity', activityId, ...payload })
+      else await api('admin', { action: 'addActivity', ...payload })
+      toast(activityId ? '活动已更新' : '活动已新增')
+      listFilters.activities.page = 1
+      renderActivities(view)
+    } catch (ex) { toast(ex.message) }
+  }
   view.onclick = async (e) => {
     const t = e.target
+    if (t.closest && t.closest('#activityForm')) return
     try {
+      if (t.dataset.edit) {
+        const activity = (view._activities || []).find(item => item._id === t.dataset.edit)
+        if (!activity) return
+        const reward = activity.rewardConfig || {}
+        const task = activity.taskConfig || {}
+        setField(form, 'activityId', activity._id)
+        setField(form, 'title', activity.title || '')
+        setField(form, 'description', activity.description || '')
+        setField(form, 'image', activity.image || '')
+        setField(form, 'status', ['published', 'draft', 'offline'].includes(activity.status) ? activity.status : 'draft')
+        setField(form, 'startTime', dateInput(activity.startTime))
+        setField(form, 'endTime', dateInput(activity.endTime))
+        setField(form, 'taskType', activity.taskType === 'purchase' ? 'purchase' : 'browse')
+        setField(form, 'type', activity.type === 'prize' ? 'prize' : 'coupon')
+        setField(form, 'browseSeconds', task.browseSeconds || 30)
+        setField(form, 'taskMinAmount', task.minAmount || 0)
+        setField(form, 'couponType', reward.couponType === 'discount' ? 'discount' : 'fixed')
+        setField(form, 'couponValue', reward.couponValue || '')
+        setField(form, 'couponMinAmount', reward.minAmount || 0)
+        setField(form, 'validDays', reward.validDays || 7)
+        setField(form, 'couponQuantity', reward.totalQuantity || 0)
+        setField(form, 'categoryId', reward.categoryId || '')
+        setField(form, 'prizeName', reward.prizeName || '')
+        setField(form, 'prizeQuantity', reward.totalQuantity || 0)
+        setField(form, 'prizeImage', reward.prizeImage || '')
+        form.querySelector('h3').textContent = '编辑活动'
+        syncActivityFields(form)
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
       if (t.dataset.toggle) {
         await api('admin', { action: 'toggleActivityStatus', activityId: t.dataset.toggle, status: t.dataset.status })
-        toast('已更新'); renderActivities(view)
+        toast('已更新')
+        renderActivities(view)
       }
       if (t.dataset.del && confirm('删除这个活动？')) {
         await api('admin', { action: 'deleteActivity', activityId: t.dataset.del })
-        toast('已删除'); renderActivities(view)
+        toast('已删除')
+        renderActivities(view)
       }
     } catch (ex) { toast(ex.message) }
   }
