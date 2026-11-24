@@ -158,6 +158,12 @@ const ORDER_STATUS = {
   pending: '待付款', paid: '待发货', shipped: '已发货',
   delivered: '已收货', cancelled: '已取消', refunded: '已退款'
 }
+const CARRIERS = [
+  ['SF', '顺丰速运'], ['YTO', '圆通速递'], ['ZTO', '中通快递'], ['STO', '申通快递'],
+  ['YD', '韵达速递'], ['JTSD', '极兔速递'], ['JD', '京东快递'], ['EMS', 'EMS'],
+  ['YZPY', '邮政快递包裹'], ['DBL', '德邦快递'], ['HTKY', '百世快递'], ['ZJS', '宅急送'],
+  ['UC', '优速快递'], ['CNSD', '菜鸟速递']
+]
 let tab = 'overview'
 let categories = []
 const PAGE_SIZE = 50
@@ -1134,7 +1140,7 @@ async function renderOrders(view) {
       <td>${dateText(o.createTime)}</td>
       <td class="actions">
         ${o.status === 'paid' ? `<button class="btn small" data-ship="${esc(o.orderNo)}">发货</button>` : ''}
-        ${o.status === 'paid' || o.status === 'shipped' ? `<button class="btn ghost small" data-refund="${esc(o.orderNo)}">退款</button>` : ''}
+        ${o.status === 'paid' || o.status === 'shipped' || o.status === 'delivered' ? `<button class="btn ghost small" data-refund="${esc(o.orderNo)}">退款</button>` : ''}
         <button class="btn ghost small" data-detail="${esc(o.orderNo)}">详情</button>
         <button class="btn danger small" data-del="${esc(o.orderNo)}">删除</button>
       </td>
@@ -1150,13 +1156,70 @@ async function renderOrders(view) {
     const t = e.target
     try {
       if (t.dataset.detail) await openOrderDetails(t.dataset.detail)
-      if (t.dataset.ship) { await api('admin', { action: 'shipOrder', orderNo: t.dataset.ship }); toast('已发货'); renderOrders(view) }
-      if (t.dataset.refund && confirm('确定退款？')) { await api('admin', { action: 'refundOrder', orderNo: t.dataset.refund }); toast('已退款'); renderOrders(view) }
+      if (t.dataset.ship) openShip(view, t.dataset.ship)
+      if (t.dataset.refund && confirm('确定退款？钱会原路退回微信。')) { await api('admin', { action: 'refundOrder', orderNo: t.dataset.refund }); toast('已退款'); renderOrders(view) }
       if (t.dataset.del && confirm('确定删除订单？')) { await api('admin', { action: 'deleteOrder', orderNo: t.dataset.del }); toast('已删除'); renderOrders(view) }
     } catch (ex) { toast(ex.message) }
   }
 }
 
+
+function openShip(view, orderNo) {
+  const options = CARRIERS.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('')
+  const modal = document.createElement('div')
+  modal.className = 'modal'
+  modal.innerHTML = `<form class="card" id="shipForm">
+    <h3>发货 ${esc(orderNo)}</h3>
+    <p class="hint">提交后会同步到微信发货信息，货款才能结算。顺丰必须有收货人手机号。</p>
+    <label>发货方式</label>
+    <select name="logisticsType" id="shipMode">
+      <option value="1">快递</option>
+      <option value="2">同城配送</option>
+      <option value="4">用户自提</option>
+    </select>
+    <div id="shipExpress">
+      <label>快递公司</label>
+      <select name="expressCompany">${options}</select>
+      <label>运单号</label>
+      <input name="trackingNo" placeholder="只填字母和数字" autocomplete="off" required>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn" type="submit">确认发货</button>
+      <button class="btn ghost" type="button" id="cancelShip">取消</button>
+    </div>
+  </form>`
+  document.body.appendChild(modal)
+  const express = modal.querySelector('#shipExpress')
+  const tracking = express.querySelector('input')
+  modal.querySelector('#shipMode').onchange = (event) => {
+    const courier = event.target.value === '1'
+    express.classList.toggle('hidden', !courier)
+    tracking.required = courier
+  }
+  modal.querySelector('#cancelShip').onclick = () => modal.remove()
+  modal.querySelector('#shipForm').onsubmit = async (event) => {
+    event.preventDefault()
+    const form = new FormData(event.target)
+    const logisticsType = Number(form.get('logisticsType'))
+    const button = event.target.querySelector('button[type="submit"]')
+    button.disabled = true
+    try {
+      await api('admin', {
+        action: 'shipOrder',
+        orderNo,
+        logisticsType,
+        expressCompany: logisticsType === 1 ? form.get('expressCompany') : '',
+        trackingNo: logisticsType === 1 ? String(form.get('trackingNo') || '').trim() : ''
+      })
+      modal.remove()
+      toast('已发货，微信发货信息已录入')
+      renderOrders(view)
+    } catch (error) {
+      button.disabled = false
+      toast(error.message)
+    }
+  }
+}
 
 async function openOrderDetails(orderNo) {
   const { order } = await api('admin', { action: 'getOrderDetail', orderNo })
@@ -1172,6 +1235,7 @@ async function openOrderDetails(orderNo) {
     + '<p>' + esc(address.name) + ' ' + esc(address.phone) + '</p>'
     + '<p>' + esc(region) + ' ' + esc(address.detail) + '</p>'
     + '<table><tr><th>商品</th><th>数量</th><th>单价</th></tr>' + rows + '</table>'
+    + (order.expressText ? '<p>物流 ' + esc(order.expressText) + '</p>' : '')
     + (order.freightAmount > 0 ? '<p>运费 ' + money(order.freightAmount) + '</p>' : '<p>运费 包邮</p>')
     + '<p>实付 ' + money(order.finalPrice ?? order.totalPrice) + '</p>'
     + '<div class="actions"><button class="btn ghost" type="button" data-close-order>关闭</button></div></div>'
