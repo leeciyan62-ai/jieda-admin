@@ -152,7 +152,8 @@ const TABS = [
   ['reviews', '评价'],
   ['activities', '活动'],
   ['coupons', '优惠券'],
-  ['icons', '图标']
+  ['icons', '图标'],
+  ['shop', '展示']
 ]
 const ORDER_STATUS = {
   pending: '待付款', paid: '待发货', shipped: '已发货',
@@ -540,6 +541,7 @@ async function render() {
     if (tab === 'activities') await renderActivities(view)
     if (tab === 'coupons') await renderCoupons(view)
     if (tab === 'icons') await renderIcons(view)
+    if (tab === 'shop') await renderShop(view)
   } catch (ex) {
     view.innerHTML = `<div class="card">${esc(ex.message)}</div>`
   }
@@ -1117,6 +1119,85 @@ async function renderNotice(view) {
       toast('通知已保存')
       renderNotice(view)
     } catch (ex) { toast(ex.message) }
+  }
+}
+
+async function renderShop(view) {
+  const display = await api('admin', { action: 'getShopDisplay' })
+  if (tab !== 'shop') return
+  view._display = display
+  const urls = await cloudUrls([display.serviceQr || ''])
+  const qr = showSrc(display.serviceQr, urls)
+  view.innerHTML = `
+    <div style="display:grid;gap:14px;max-width:640px">
+      <div class="card">
+        <h3 style="margin:0 0 6px">展示销量</h3>
+        <p class="hint">页面上的「已售」等于真实销量加上基数。浮动大于 0 时，每件商品会在这个范围内再错开一点。审核期间两项都填 0，就只显示真实销量。上线后例如基数填 48、浮动填 120，显示大约是 48 到 167。小程序大约两分钟后换成新数字。</p>
+        <form id="salesForm">
+          <label>基数</label>
+          <input name="salesBase" type="number" min="0" max="9999" step="1" value="${Number(display.salesBase) || 0}">
+          <label>浮动</label>
+          <input name="salesSpan" type="number" min="0" max="9999" step="1" value="${Number(display.salesSpan) || 0}">
+          <button class="btn" style="margin-top:14px" type="submit">保存</button>
+        </form>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 6px">客服二维码</h3>
+        <p class="hint">上传后出现在小程序「我的 → 联系客服」。顾客长按可以识别。换图后大约两分钟内生效。</p>
+        ${qr ? `<img src="${esc(qr)}" alt="客服二维码" style="width:160px;height:160px;object-fit:contain;background:#f6f1ec;border-radius:8px">` : '<p class="hint">还没有上传</p>'}
+        <input class="hidden" id="serviceQrFile" type="file" accept="image/*">
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn" id="serviceQrPick" type="button">上传二维码</button>
+          ${display.serviceQr ? '<button class="btn ghost" id="serviceQrClear" type="button">移除</button>' : ''}
+        </div>
+      </div>
+    </div>`
+  document.getElementById('salesForm').onsubmit = async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    try {
+      await api('admin', {
+        action: 'saveShopDisplay',
+        salesBase: fd.get('salesBase'),
+        salesSpan: fd.get('salesSpan'),
+        serviceQr: view._display.serviceQr || ''
+      })
+      toast('展示销量已保存')
+      renderShop(view)
+    } catch (ex) { toast(ex.message) }
+  }
+  document.getElementById('serviceQrPick').onclick = () => document.getElementById('serviceQrFile').click()
+  document.getElementById('serviceQrFile').onchange = async () => {
+    const file = document.getElementById('serviceQrFile').files[0]
+    document.getElementById('serviceQrFile').value = ''
+    if (!file) return
+    try {
+      toast('正在上传…')
+      const uploaded = await uploadLocalImage(file, 'service')
+      await api('admin', {
+        action: 'saveShopDisplay',
+        salesBase: view._display.salesBase || 0,
+        salesSpan: view._display.salesSpan || 0,
+        serviceQr: uploaded.fileID
+      })
+      toast('客服二维码已更新')
+      renderShop(view)
+    } catch (ex) { toast(ex.message) }
+  }
+  const clear = document.getElementById('serviceQrClear')
+  if (clear) {
+    clear.onclick = async () => {
+      try {
+        await api('admin', {
+          action: 'saveShopDisplay',
+          salesBase: view._display.salesBase || 0,
+          salesSpan: view._display.salesSpan || 0,
+          serviceQr: ''
+        })
+        toast('已移除客服二维码')
+        renderShop(view)
+      } catch (ex) { toast(ex.message) }
+    }
   }
 }
 
