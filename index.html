@@ -276,6 +276,10 @@ function dateText(v) {
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 function money(n) { return '¥' + Number(n || 0).toFixed(2) }
+function shownPrice(n) {
+  const value = Number(n)
+  return Number.isFinite(value) ? money(value) : '—'
+}
 
 function fileToJpeg(file) {
   return new Promise((resolve, reject) => {
@@ -711,9 +715,10 @@ function productForm(p = {}) {
     <h3>${p._id ? '编辑商品' : '新增商品'}</h3>
     <label>名称</label><input name="name" value="${esc(p.name)}" required>
     <div class="row2">
-      <div><label>价格</label><input name="price" type="number" step="0.01" value="${p.price || ''}" required></div>
-      <div><label>原价</label><input name="originalPrice" type="number" step="0.01" value="${p.originalPrice || ''}"></div>
+      <div><label>售价</label><input name="price" type="number" step="0.01" value="${p.price || ''}" required><div class="hint">打八折后顾客付款的价格</div></div>
+      <div><label>划线价</label><input name="originalPrice" type="number" step="0.01" value="${p.originalPrice || ''}"><div class="hint">小程序里黑色划掉的价格</div></div>
     </div>
+    <label>成本价</label><input value="${p.costPrice == null || p.costPrice === '' ? '' : p.costPrice}" disabled placeholder="没有记录"><div class="hint">原来的红色供价，只在后台查看</div>
     <div class="row2">
       <div><label>库存</label><input name="stock" type="number" value="${p.stock || 0}"></div>
       <div><label>分类</label><select name="categoryId">${opts}</select></div>
@@ -892,19 +897,20 @@ async function renderProducts(view) {
       <button class="btn ghost" id="prodImport" type="button">导入 Excel</button>
       <input id="prodFile" class="hidden" type="file" accept=".xlsx,.xls,.csv">
     </div>
+    <p class="hint">成本价是原来的红色供价。划线价是黑色划掉的价格。售价是打八折后顾客付款的价格。</p>
     <div class="card"><table>
-      <tr><th></th><th>名称</th><th>品牌</th><th>分类</th><th>价格</th><th>库存</th><th>销量</th><th>状态</th><th></th></tr>
+      <tr><th></th><th>名称</th><th>品牌</th><th>分类</th><th>成本价</th><th>划线价</th><th>售价</th><th>库存</th><th>销量</th><th>状态</th><th></th></tr>
       ${list.map(p => `<tr>
         <td>${showSrc((p.images || [])[0], urls) ? `<img class="thumb" src="${esc(showSrc((p.images || [])[0], urls))}">` : ''}${(p.images || []).length > 1 ? `<div class="hint">${p.images.length} 张</div>` : ''}</td>
         <td>${esc(p.name)}</td><td>${esc(p.brand || '')}</td><td>${esc(catName(p.categoryId))}</td>
-        <td>${money(p.price)}</td><td>${p.stock || 0}</td><td>${Number(p.sales) || 0}</td>
+        <td>${shownPrice(p.costPrice)}</td><td>${shownPrice(p.originalPrice)}</td><td>${shownPrice(p.price)}</td><td>${p.stock || 0}</td><td>${Number(p.sales) || 0}</td>
         <td><span class="tag ${p.status === 'on' ? 'on' : 'off'}">${p.status === 'on' ? '在售' : '下架'}</span></td>
         <td class="actions">
           <button class="btn ghost small" data-edit="${p._id}">编辑</button>
           <button class="btn ghost small" data-status="${p._id}" data-next="${p.status === 'on' ? 'off' : 'on'}">${p.status === 'on' ? '下架' : '上架'}</button>
           <button class="btn danger small" data-del="${p._id}">删除</button>
         </td>
-      </tr>`).join('') || '<tr><td colspan="9">暂无商品</td></tr>'}
+      </tr>`).join('') || '<tr><td colspan="11">暂无商品</td></tr>'}
     </table>${pager('products', res.total, '件')}</div>`
   const openForm = async (p) => {
     const existing = (p && p.images) || []
