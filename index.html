@@ -1201,6 +1201,74 @@ async function renderShop(view) {
   }
 }
 
+async function downloadOrders(button) {
+  const filters = listFilters.orders
+  button.disabled = true
+  const previous = button.textContent
+  button.textContent = '正在导出…'
+  try {
+    const rows = []
+    let page = 1
+    let total = Infinity
+    while (rows.length < total && page <= 50) {
+      const res = await api('admin', {
+        action: 'getOrders',
+        page,
+        pageSize: 100,
+        keyword: filters.keyword,
+        status: filters.status
+      })
+      const list = res.list || []
+      total = Number(res.total) || 0
+      rows.push(...list)
+      if (!list.length) break
+      page += 1
+    }
+    if (!rows.length) {
+      toast('没有可下载的订单')
+      return
+    }
+    const sheetRows = rows.map(order => {
+      const address = order.address || {}
+      const region = Array.isArray(address.region) ? address.region.join('') : (address.region || '')
+      return {
+        订单号: order.orderNo || '',
+        状态: ORDER_STATUS[order.status] || order.status || '',
+        下单时间: dateText(order.createTime),
+        实付: Number(order.finalPrice != null ? order.finalPrice : order.totalPrice) || 0,
+        商品金额: Number(order.totalPrice) || 0,
+        运费: Number(order.freightAmount) || 0,
+        收货人: address.name || '',
+        手机: address.phone || '',
+        地址: `${region}${address.detail || ''}`,
+        商品: (order.items || []).map(item => `${item.name || ''} x${item.quantity}`).join('；'),
+        物流: order.expressText || '',
+        备注: order.remark || ''
+      }
+    })
+    const sheet = XLSX.utils.json_to_sheet(sheetRows)
+    const range = XLSX.utils.decode_range(sheet['!ref'])
+    for (let r = 1; r <= range.e.r; r++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c: 7 })]
+      if (!cell) continue
+      cell.t = 's'
+      cell.v = String(cell.v)
+      cell.z = '@'
+    }
+    sheet['!cols'] = [22, 10, 18, 10, 10, 8, 12, 14, 36, 48, 24, 20].map(wch => ({ wch }))
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, sheet, '订单')
+    const day = dateText(new Date()).slice(0, 10)
+    XLSX.writeFile(book, `皆达欢喜订单${day}.xlsx`)
+    toast(`已下载 ${rows.length} 单`)
+  } catch (error) {
+    toast(error.message)
+  } finally {
+    button.disabled = false
+    button.textContent = previous
+  }
+}
+
 async function renderOrders(view) {
   const filters = listFilters.orders
   const res = await loadList('orders', 'getOrders')
@@ -1212,6 +1280,7 @@ async function renderOrders(view) {
     <input id="orderKw" aria-label="订单号" placeholder="输入完整订单号" value="${esc(filters.keyword)}">
     <select id="orderStatus" aria-label="订单状态"><option value="">全部状态</option>${statusOptions}</select>
     <button id="orderSearch" type="button" class="btn">筛选</button>
+    <button id="orderExport" type="button" class="btn" style="margin-left:auto">下载订单</button>
   </div><div class="card"><table>
     <tr><th>订单号</th><th>金额</th><th>状态</th><th>时间</th><th></th></tr>
     ${(res.list || []).map(o => `<tr>
@@ -1233,6 +1302,7 @@ async function renderOrders(view) {
     filters.page = 1
     render()
   }
+  document.getElementById('orderExport').onclick = () => downloadOrders(document.getElementById('orderExport'))
   view.onclick = async (e) => {
     const t = e.target
     try {
