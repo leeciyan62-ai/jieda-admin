@@ -132,7 +132,10 @@
   <div class="main">
     <header class="topbar">
       <h2 id="title">概览</h2>
-      <button class="btn ghost" id="logoutBtn">退出</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn hidden" id="orderExportTop" type="button">下载订单表格</button>
+        <button class="btn ghost" id="logoutBtn">退出</button>
+      </div>
     </header>
     <div id="view"></div>
   </div>
@@ -343,6 +346,7 @@ function showApp() {
     `<button data-tab="${id}" class="${id === tab ? 'active' : ''}">${name}</button>`
   ).join('')
   document.getElementById('title').textContent = TABS.find(t => t[0] === tab)[1]
+  document.getElementById('orderExportTop').classList.toggle('hidden', tab !== 'orders')
   render()
 }
 
@@ -352,6 +356,7 @@ document.getElementById('nav').onclick = (e) => {
   tab = id
   showApp()
 }
+document.getElementById('orderExportTop').onclick = () => downloadOrders(document.getElementById('orderExportTop'))
 document.getElementById('logoutBtn').onclick = async () => {
   const current = readSession()
   if (current) {
@@ -1280,7 +1285,7 @@ async function renderOrders(view) {
     <input id="orderKw" aria-label="订单号" placeholder="输入完整订单号" value="${esc(filters.keyword)}">
     <select id="orderStatus" aria-label="订单状态"><option value="">全部状态</option>${statusOptions}</select>
     <button id="orderSearch" type="button" class="btn">筛选</button>
-    <button id="orderExport" type="button" class="btn" style="margin-left:auto">下载订单</button>
+    <button id="orderExport" type="button" class="btn" style="margin-left:auto">下载订单表格</button>
   </div><div class="card"><table>
     <tr><th>订单号</th><th>金额</th><th>状态</th><th>时间</th><th></th></tr>
     ${(res.list || []).map(o => `<tr>
