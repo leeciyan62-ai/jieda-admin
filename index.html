@@ -173,7 +173,7 @@ let categories = []
 const PAGE_SIZE = 50
 const listFilters = {
   users: { page: 1, keyword: '' },
-  products: { page: 1, keyword: '' },
+  products: { page: 1, keyword: '', belowCost: false },
   orders: { page: 1, keyword: '', status: '' },
   reviews: { page: 1 },
   activities: { page: 1 },
@@ -880,10 +880,48 @@ function reviewImportRows(rows) {
   return { ready, errors }
 }
 
+function priceCents(value) {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? Math.round(amount * 100) : NaN
+}
+
+function saleBelowCost(product) {
+  const price = priceCents(product.price)
+  const cost = priceCents(product.costPrice)
+  return Number.isFinite(price) && Number.isFinite(cost) && price < cost
+}
+
+async function loadProducts() {
+  const filters = listFilters.products
+  if (!filters.belowCost) return loadList('products', 'getProducts')
+  const matched = []
+  let page = 1
+  let seen = 0
+  let total = Infinity
+  while (seen < total && page <= 40) {
+    const res = await api('admin', {
+      action: 'getProducts',
+      page,
+      pageSize: 100,
+      keyword: filters.keyword || ''
+    })
+    const list = res.list || []
+    total = Number(res.total) || 0
+    matched.push(...list.filter(saleBelowCost))
+    seen += list.length
+    if (!list.length) break
+    page += 1
+  }
+  const lastPage = Math.max(1, Math.ceil(matched.length / PAGE_SIZE))
+  if (filters.page > lastPage) filters.page = lastPage
+  const start = (filters.page - 1) * PAGE_SIZE
+  return { list: matched.slice(start, start + PAGE_SIZE), total: matched.length }
+}
+
 async function renderProducts(view) {
   await loadCategories()
-  const { keyword } = listFilters.products
-  const res = await loadList('products', 'getProducts')
+  const { keyword, belowCost } = listFilters.products
+  const res = await loadProducts()
   if (tab !== 'products') return
   const list = res.list || []
   const urls = await cloudUrls(list.map(p => (p.images || [])[0]))
@@ -892,12 +930,13 @@ async function renderProducts(view) {
     <div class="tools">
       <input id="prodKw" placeholder="搜索商品" value="${esc(keyword)}">
       <button class="btn" id="prodSearch">搜索</button>
+      <button class="btn ${belowCost ? '' : 'ghost'}" id="prodBelowCost" type="button">售价低于成本</button>
       <button class="btn" id="prodAdd">新增商品</button>
       <button class="btn ghost" id="prodTemplate" type="button">下载模板</button>
       <button class="btn ghost" id="prodImport" type="button">导入 Excel</button>
       <input id="prodFile" class="hidden" type="file" accept=".xlsx,.xls,.csv">
     </div>
-    <p class="hint">成本价是原来的红色供价。划线价是黑色划掉的价格。售价是打八折后顾客付款的价格。</p>
+    <p class="hint">${belowCost ? '正在只显示售价低于成本价的商品。再点一次「售价低于成本」恢复全部。' : '成本价是原来的红色供价。划线价是黑色划掉的价格。售价是打八折后顾客付款的价格。'}</p>
     <div class="card"><table>
       <tr><th></th><th>名称</th><th>品牌</th><th>分类</th><th>成本价</th><th>划线价</th><th>售价</th><th>库存</th><th>销量</th><th>状态</th><th></th></tr>
       ${list.map(p => `<tr>
@@ -990,6 +1029,11 @@ async function renderProducts(view) {
   }
   document.getElementById('prodSearch').onclick = () => {
     listFilters.products.keyword = document.getElementById('prodKw').value.trim()
+    listFilters.products.page = 1
+    render()
+  }
+  document.getElementById('prodBelowCost').onclick = () => {
+    listFilters.products.belowCost = !listFilters.products.belowCost
     listFilters.products.page = 1
     render()
   }
