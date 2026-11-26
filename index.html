@@ -133,6 +133,7 @@
     <header class="topbar">
       <h2 id="title">概览</h2>
       <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn hidden" id="prodBelowCostTop" type="button">售价低于成本</button>
         <button class="btn hidden" id="orderExportTop" type="button">下载订单表格</button>
         <button class="btn ghost" id="logoutBtn">退出</button>
       </div>
@@ -351,7 +352,16 @@ function showApp() {
   ).join('')
   document.getElementById('title').textContent = TABS.find(t => t[0] === tab)[1]
   document.getElementById('orderExportTop').classList.toggle('hidden', tab !== 'orders')
+  syncProductFilterButton()
   render()
+}
+
+function syncProductFilterButton() {
+  const button = document.getElementById('prodBelowCostTop')
+  const onProducts = tab === 'products'
+  button.classList.toggle('hidden', !onProducts)
+  if (!onProducts) return
+  button.textContent = listFilters.products.belowCost ? '显示全部商品' : '售价低于成本'
 }
 
 document.getElementById('nav').onclick = (e) => {
@@ -359,6 +369,12 @@ document.getElementById('nav').onclick = (e) => {
   if (!id) return
   tab = id
   showApp()
+}
+document.getElementById('prodBelowCostTop').onclick = () => {
+  if (tab !== 'products') return
+  listFilters.products.belowCost = !listFilters.products.belowCost
+  listFilters.products.page = 1
+  render()
 }
 document.getElementById('orderExportTop').onclick = () => downloadOrders(document.getElementById('orderExportTop'))
 document.getElementById('logoutBtn').onclick = async () => {
@@ -536,6 +552,7 @@ async function renderIcons(view) {
 }
 
 async function render() {
+  syncProductFilterButton()
   const view = document.getElementById('view')
   view.innerHTML = '<div class="card">加载中…</div>'
   try {
@@ -930,7 +947,7 @@ async function renderProducts(view) {
     <div class="tools">
       <input id="prodKw" placeholder="搜索商品" value="${esc(keyword)}">
       <button class="btn" id="prodSearch">搜索</button>
-      <button class="btn ${belowCost ? '' : 'ghost'}" id="prodBelowCost" type="button">售价低于成本</button>
+      <button class="btn" id="prodBelowCost" type="button">${belowCost ? '显示全部商品' : '售价低于成本'}</button>
       <button class="btn" id="prodAdd">新增商品</button>
       <button class="btn ghost" id="prodTemplate" type="button">下载模板</button>
       <button class="btn ghost" id="prodImport" type="button">导入 Excel</button>
